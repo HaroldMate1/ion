@@ -138,44 +138,52 @@ export default function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {holdings.map((holding) => (
-                  <TableRow key={holding.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{holding.symbol}</div>
-                        <div className="text-sm text-muted-foreground">{holding.asset_name}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">{holding.quantity}</TableCell>
-                    <TableCell className="text-right">${holding.average_buy_price.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">
-                      ${holding.current_price?.toFixed(2) || '—'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      ${holding.current_value?.toFixed(2) || '—'}
-                    </TableCell>
-                    <TableCell
-                      className={`text-right ${
-                        (holding.unrealized_pl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}
-                    >
-                      {holding.unrealized_pl !== undefined ? (
+                {holdings.map((holding) => {
+                  const isPriceAvailable = holding.current_price && holding.current_price > 0;
+
+                  return (
+                    <TableRow key={holding.id}>
+                      <TableCell>
                         <div>
-                          <div>
-                            {holding.unrealized_pl >= 0 ? '+' : ''}${holding.unrealized_pl.toFixed(2)}
-                          </div>
-                          <div className="text-xs">
-                            {holding.unrealized_pl_percentage !== undefined
-                              ? `${holding.unrealized_pl_percentage >= 0 ? '+' : ''}${holding.unrealized_pl_percentage.toFixed(2)}%`
-                              : '—'}
-                          </div>
+                          <div className="font-medium">{holding.symbol}</div>
+                          <div className="text-sm text-muted-foreground">{holding.asset_name}</div>
                         </div>
-                      ) : (
-                        '—'
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell className="text-right">{holding.quantity}</TableCell>
+                      <TableCell className="text-right">${holding.average_buy_price.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">
+                        {isPriceAvailable ? (
+                          `$${holding.current_price.toFixed(2)}`
+                        ) : (
+                          <span className="text-muted-foreground text-xs">Price unavailable</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isPriceAvailable && holding.current_value ? (
+                          `$${holding.current_value.toFixed(2)}`
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isPriceAvailable && holding.unrealized_pl !== undefined ? (
+                          <div className={holding.unrealized_pl >= 0 ? 'text-green-600' : 'text-red-600'}>
+                            <div>
+                              {holding.unrealized_pl >= 0 ? '+' : ''}${holding.unrealized_pl.toFixed(2)}
+                            </div>
+                            <div className="text-xs">
+                              {holding.unrealized_pl_percentage !== undefined
+                                ? `${holding.unrealized_pl_percentage >= 0 ? '+' : ''}${holding.unrealized_pl_percentage.toFixed(2)}%`
+                                : '—'}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">Price unavailable</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
