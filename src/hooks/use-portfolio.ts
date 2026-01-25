@@ -118,11 +118,15 @@ export function usePortfolioSummary(): PortfolioSummary | null {
 
   if (!balance) return null;
 
-  const portfolioValue = holdings.reduce((sum, h) => sum + (h.current_value || 0), 0);
+  // Filter holdings with available prices (exclude holdings where price is unavailable)
+  const holdingsWithPrices = holdings.filter(h => h.current_price && h.current_price > 0);
+
+  const portfolioValue = holdingsWithPrices.reduce((sum, h) => sum + (h.current_value || 0), 0);
+  const totalInvestedInAvailableHoldings = holdingsWithPrices.reduce((sum, h) => sum + h.total_invested, 0);
   const totalValue = balance.available_cash + portfolioValue;
-  const totalProfitLoss = portfolioValue - balance.total_invested;
+  const totalProfitLoss = portfolioValue - totalInvestedInAvailableHoldings;
   const totalProfitLossPercentage =
-    balance.total_invested > 0 ? (totalProfitLoss / balance.total_invested) * 100 : 0;
+    totalInvestedInAvailableHoldings > 0 ? (totalProfitLoss / totalInvestedInAvailableHoldings) * 100 : 0;
 
   return {
     total_value: totalValue,
