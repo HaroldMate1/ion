@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
           volume_24h: quote.volume_24h,
           market_cap: quote.market_cap,
           cached_at: new Date().toISOString(),
-        },
+        } as any,
         {
           onConflict: 'symbol,asset_type',
         }
