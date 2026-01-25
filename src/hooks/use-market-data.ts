@@ -40,8 +40,8 @@ export function useMarketQuote(symbol: string, assetType: AssetType, enabled: bo
       return response.json();
     },
     enabled: enabled && !!symbol && !!assetType,
-    staleTime: 10 * 60 * 1000, // 10 minutes - increased to reduce API calls
-    refetchInterval: false, // Disable automatic refetching to reduce API load
+    staleTime: 5 * 60 * 1000, // 5 minutes - match refetch interval
+    refetchInterval: 5 * 60 * 1000, // Auto-refresh every 5 minutes
     retry: 2, // Retry failed requests only twice
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
   });
@@ -67,8 +67,8 @@ export function useMarketQuotes(
       return results.filter((result) => result !== null);
     },
     enabled: enabled && assets.length > 0,
-    staleTime: 15 * 60 * 1000, // 15 minutes - significantly increased
-    refetchInterval: false, // Disable automatic refetching
+    staleTime: 5 * 60 * 1000, // 5 minutes - match refetch interval
+    refetchInterval: 5 * 60 * 1000, // Auto-refresh every 5 minutes
     retry: 1, // Only retry once for batch requests
     retryDelay: 2000, // 2 second delay before retry
   });
