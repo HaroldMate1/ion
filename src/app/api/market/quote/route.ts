@@ -47,6 +47,7 @@ export async function GET(request: NextRequest) {
     const ttlMs = CACHE_TTL_MINUTES[assetType] * 60 * 1000;
     const isCacheValid =
       cachedPrice &&
+      cachedPrice.cached_at &&
       new Date().getTime() - new Date(cachedPrice.cached_at).getTime() < ttlMs;
 
     if (isCacheValid && cachedPrice) {
