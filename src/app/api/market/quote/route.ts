@@ -37,15 +37,16 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
 
     // Check cache first
-    const { data: cachedPrice } = await supabase
+    const { data: cachedPrice, error: cacheError } = await supabase
       .from('price_cache')
       .select('*')
       .eq('symbol', symbol.toUpperCase())
       .eq('asset_type', assetType)
-      .single();
+      .maybeSingle();
 
     const ttlMs = CACHE_TTL_MINUTES[assetType] * 60 * 1000;
     const isCacheValid =
+      !cacheError &&
       cachedPrice &&
       cachedPrice.cached_at &&
       new Date().getTime() - new Date(cachedPrice.cached_at).getTime() < ttlMs;
