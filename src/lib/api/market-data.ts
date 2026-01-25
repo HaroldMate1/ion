@@ -1,10 +1,10 @@
 /**
  * Unified Market Data API
- * Combines Alpha Vantage (stocks/ETFs) and CoinGecko (crypto) with caching
+ * Combines Finnhub (stocks/ETFs) and CoinGecko (crypto) with caching
  */
 
 import type { AssetType, MarketQuote } from '@/types';
-import * as alphaVantage from './alpha-vantage';
+import * as finnhub from './finnhub';
 import * as coinGecko from './coingecko';
 
 /**
@@ -28,8 +28,8 @@ export async function getMarketQuote(
         market_cap: quote.marketCap,
       };
     } else {
-      // Stock or ETF
-      const quote = await alphaVantage.getQuote(symbol);
+      // Stock or ETF - using Finnhub
+      const quote = await finnhub.getQuote(symbol);
       if (!quote) return null;
 
       return {
@@ -37,7 +37,7 @@ export async function getMarketQuote(
         asset_type: assetType,
         price: quote.price,
         change_24h: quote.changePercent,
-        volume_24h: quote.volume,
+        volume_24h: undefined, // Finnhub doesn't provide 24h volume in quote
       };
     }
   } catch (error) {
@@ -52,15 +52,14 @@ export async function getMarketQuote(
 export async function searchAssets(query: string) {
   try {
     const [stockResults, cryptoResults] = await Promise.all([
-      alphaVantage.searchSymbol(query),
+      finnhub.searchSymbol(query),
       coinGecko.searchCrypto(query),
     ]);
 
     const stocks = stockResults.map((result) => ({
       symbol: result.symbol,
       name: result.name,
-      asset_type: (result.type.includes('ETF') ? 'etf' : 'stock') as AssetType,
-      exchange: result.region,
+      asset_type: (result.type.toLowerCase().includes('etf') ? 'etf' : 'stock') as AssetType,
     }));
 
     const cryptos = cryptoResults.map((result) => ({
@@ -100,12 +99,12 @@ export async function getHistoricalPrices(
 
       return await coinGecko.getHistoricalData(coin.id, days);
     } else {
-      // For stocks/ETFs
-      const data = await alphaVantage.getHistoricalData(symbol);
+      // For stocks/ETFs - using Finnhub
+      const data = await finnhub.getHistoricalData(symbol, days);
       if (!data) return null;
 
-      // Convert to simplified format and limit to requested days
-      return data.slice(0, days).map((item) => ({
+      // Convert to simplified format
+      return data.map((item) => ({
         date: item.date,
         price: item.close,
       }));
