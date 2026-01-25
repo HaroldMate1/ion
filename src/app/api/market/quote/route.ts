@@ -45,20 +45,22 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     const ttlMs = CACHE_TTL_MINUTES[assetType] * 60 * 1000;
-    const isCacheValid =
-      !cacheError &&
-      cachedPrice &&
-      cachedPrice.cached_at &&
-      new Date().getTime() - new Date(cachedPrice.cached_at).getTime() < ttlMs;
+    let isCacheValid = false;
 
-    if (isCacheValid && cachedPrice) {
+    if (!cacheError && cachedPrice && typeof cachedPrice === 'object' && 'cached_at' in cachedPrice) {
+      const cachedAt = cachedPrice.cached_at as string;
+      isCacheValid = new Date().getTime() - new Date(cachedAt).getTime() < ttlMs;
+    }
+
+    if (isCacheValid && cachedPrice && typeof cachedPrice === 'object') {
+      const cached = cachedPrice as any;
       return NextResponse.json({
-        symbol: cachedPrice.symbol,
-        asset_type: cachedPrice.asset_type,
-        price: Number(cachedPrice.price),
-        change_24h: cachedPrice.change_24h ? Number(cachedPrice.change_24h) : null,
-        volume_24h: cachedPrice.volume_24h ? Number(cachedPrice.volume_24h) : null,
-        market_cap: cachedPrice.market_cap ? Number(cachedPrice.market_cap) : null,
+        symbol: cached.symbol,
+        asset_type: cached.asset_type,
+        price: Number(cached.price),
+        change_24h: cached.change_24h ? Number(cached.change_24h) : null,
+        volume_24h: cached.volume_24h ? Number(cached.volume_24h) : null,
+        market_cap: cached.market_cap ? Number(cached.market_cap) : null,
         cached: true,
       });
     }
