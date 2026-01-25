@@ -3,7 +3,7 @@
  * Handles the OAuth redirect after successful authentication
  */
 
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function GET(request: NextRequest) {
@@ -11,10 +11,10 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get('code');
   const origin = requestUrl.origin;
 
-  // Create response object
-  let response = NextResponse.redirect(`${origin}/dashboard`);
-
   if (code) {
+    // Create response that we'll modify with cookies
+    const response = NextResponse.redirect(`${origin}/dashboard`);
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -25,7 +25,12 @@ export async function GET(request: NextRequest) {
           },
           setAll(cookiesToSet) {
             cookiesToSet.forEach(({ name, value, options }) => {
-              response.cookies.set(name, value, options);
+              response.cookies.set(name, value, {
+                ...options,
+                // Ensure cookies work in production
+                sameSite: 'lax',
+                secure: process.env.NODE_ENV === 'production',
+              });
             });
           },
         },
@@ -38,7 +43,10 @@ export async function GET(request: NextRequest) {
       console.error('Auth callback error:', error);
       return NextResponse.redirect(`${origin}/login?error=authentication_failed`);
     }
+
+    return response;
   }
 
-  return response;
+  // No code provided, redirect to login
+  return NextResponse.redirect(`${origin}/login`);
 }
