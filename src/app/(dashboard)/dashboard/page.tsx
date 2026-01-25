@@ -9,10 +9,9 @@ import { useAuth } from '@/hooks/use-auth';
 import { useBalance, usePortfolio, usePortfolioSummary } from '@/hooks/use-portfolio';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { DollarSign, TrendingUp, Activity, ArrowRight, TrendingDown } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DollarSign, TrendingUp, Activity, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
-import { MiniPriceChart } from '@/components/charts/mini-price-chart';
-import { Badge } from '@/components/ui/badge';
 
 export default function DashboardPage() {
   const { profile } = useAuth();
@@ -113,118 +112,83 @@ export default function DashboardPage() {
       </div>
 
       {/* Holdings */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-2xl font-bold">Your Holdings</h2>
-            <p className="text-muted-foreground">Current positions in your portfolio</p>
-          </div>
-          <Link href="/portfolio">
-            <Button variant="outline">View All</Button>
-          </Link>
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Your Holdings</CardTitle>
+          <CardDescription>Current positions in your portfolio</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {holdings.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground mb-4">You don't have any holdings yet</p>
+              <Link href="/trade">
+                <Button>Start Trading</Button>
+              </Link>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Asset</TableHead>
+                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead className="text-right">Avg Buy Price</TableHead>
+                  <TableHead className="text-right">Current Price</TableHead>
+                  <TableHead className="text-right">Total Value</TableHead>
+                  <TableHead className="text-right">P&L</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {holdings.map((holding) => {
+                  const isPriceAvailable = holding.current_price && holding.current_price > 0;
 
-        {holdings.length === 0 ? (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center py-12">
-                <p className="text-muted-foreground mb-4">You don't have any holdings yet</p>
-                <Link href="/trade">
-                  <Button>Start Trading</Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {holdings.map((holding) => {
-              const isPriceAvailable = holding.current_price && holding.current_price > 0;
-              const isPositive = holding.unrealized_pl !== undefined && holding.unrealized_pl >= 0;
-
-              return (
-                <Card key={holding.id} className="overflow-hidden">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <CardTitle className="text-lg">{holding.symbol}</CardTitle>
-                          <Badge variant={holding.asset_type === 'crypto' ? 'default' : 'secondary'} className="text-xs">
-                            {holding.asset_type.toUpperCase()}
-                          </Badge>
+                  return (
+                    <TableRow key={holding.id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{holding.symbol}</div>
+                          <div className="text-sm text-muted-foreground">{holding.asset_name}</div>
                         </div>
-                        <CardDescription className="mt-1">{holding.asset_name}</CardDescription>
-                      </div>
-                      {isPriceAvailable && holding.unrealized_pl !== undefined && (
-                        <div className={`flex items-center gap-1 ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                          {isPositive ? (
-                            <TrendingUp className="h-4 w-4" />
-                          ) : (
-                            <TrendingDown className="h-4 w-4" />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Mini Chart */}
-                    {isPriceAvailable && (
-                      <MiniPriceChart
-                        symbol={holding.symbol}
-                        assetType={holding.asset_type}
-                        currentPrice={holding.current_price}
-                        days={7}
-                        height={60}
-                        showPositive={isPositive}
-                      />
-                    )}
-
-                    {/* Price Info */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Current Price</span>
+                      </TableCell>
+                      <TableCell className="text-right">{holding.quantity}</TableCell>
+                      <TableCell className="text-right">${holding.average_buy_price.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">
                         {isPriceAvailable ? (
-                          <span className="font-semibold">${holding.current_price.toFixed(2)}</span>
+                          `$${holding.current_price.toFixed(2)}`
                         ) : (
-                          <span className="text-xs text-muted-foreground">Price unavailable</span>
+                          <span className="text-muted-foreground text-xs">Price unavailable</span>
                         )}
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Quantity</span>
-                        <span className="font-semibold">{holding.quantity}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Total Value</span>
+                      </TableCell>
+                      <TableCell className="text-right">
                         {isPriceAvailable && holding.current_value ? (
-                          <span className="font-semibold">${holding.current_value.toFixed(2)}</span>
+                          `$${holding.current_value.toFixed(2)}`
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
-                      </div>
-                      <div className="flex justify-between items-center pt-2 border-t">
-                        <span className="text-sm font-medium">Profit/Loss</span>
+                      </TableCell>
+                      <TableCell className="text-right">
                         {isPriceAvailable && holding.unrealized_pl !== undefined ? (
-                          <div className={`text-right ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                            <div className="font-bold">
-                              {isPositive ? '+' : ''}${holding.unrealized_pl.toFixed(2)}
+                          <div className={holding.unrealized_pl >= 0 ? 'text-green-600' : 'text-red-600'}>
+                            <div>
+                              {holding.unrealized_pl >= 0 ? '+' : ''}${holding.unrealized_pl.toFixed(2)}
                             </div>
                             <div className="text-xs">
                               {holding.unrealized_pl_percentage !== undefined
-                                ? `${isPositive ? '+' : ''}${holding.unrealized_pl_percentage.toFixed(2)}%`
+                                ? `${holding.unrealized_pl_percentage >= 0 ? '+' : ''}${holding.unrealized_pl_percentage.toFixed(2)}%`
                                 : '—'}
                             </div>
                           </div>
                         ) : (
-                          <span className="text-xs text-muted-foreground">Price unavailable</span>
+                          <span className="text-muted-foreground text-xs">Price unavailable</span>
                         )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

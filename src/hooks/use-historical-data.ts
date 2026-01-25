@@ -40,7 +40,9 @@ export function useHistoricalData(
       return data.data;
     },
     enabled,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    refetchInterval: 60 * 1000, // Refetch every minute
+    staleTime: 30 * 60 * 1000, // 30 minutes - historical data changes slowly
+    refetchInterval: false, // Disable automatic refetching
+    retry: 1, // Only retry once
+    retryDelay: 2000, // 2 second delay
   });
 }

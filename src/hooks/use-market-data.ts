@@ -40,8 +40,10 @@ export function useMarketQuote(symbol: string, assetType: AssetType, enabled: bo
       return response.json();
     },
     enabled: enabled && !!symbol && !!assetType,
-    staleTime: assetType === 'crypto' ? 60 * 1000 : 5 * 60 * 1000, // 1 min for crypto, 5 min for stocks
-    refetchInterval: assetType === 'crypto' ? 60 * 1000 : 5 * 60 * 1000, // Auto-refresh
+    staleTime: 10 * 60 * 1000, // 10 minutes - increased to reduce API calls
+    refetchInterval: false, // Disable automatic refetching to reduce API load
+    retry: 2, // Retry failed requests only twice
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
   });
 }
 
@@ -58,14 +60,17 @@ export function useMarketQuotes(
       const promises = assets.map((asset) =>
         fetch(`/api/market/quote?symbol=${encodeURIComponent(asset.symbol)}&type=${asset.assetType}`)
           .then((res) => (res.ok ? res.json() : null))
+          .catch(() => null) // Don't fail entire batch if one fails
       );
 
       const results = await Promise.all(promises);
       return results.filter((result) => result !== null);
     },
     enabled: enabled && assets.length > 0,
-    staleTime: 60 * 1000, // 1 minute
-    refetchInterval: 60 * 1000, // Auto-refresh every minute
+    staleTime: 15 * 60 * 1000, // 15 minutes - significantly increased
+    refetchInterval: false, // Disable automatic refetching
+    retry: 1, // Only retry once for batch requests
+    retryDelay: 2000, // 2 second delay before retry
   });
 }
 
