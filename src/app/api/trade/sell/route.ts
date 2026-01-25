@@ -108,12 +108,12 @@ export async function POST(request: NextRequest) {
     const newBalance = Number(userBalance.available_cash) + totalProceeds;
     const newTotalInvestedBalance = Number(userBalance.total_invested) - amountInvestedInSold;
 
-    const { error: updateBalanceError } = await supabase
+    const { error: updateBalanceError } = await (supabase
       .from('balances')
-      .update({
+      .update as any)({
         available_cash: newBalance,
         total_invested: newTotalInvestedBalance,
-      } as any)
+      })
       .eq('user_id', user.id);
 
     if (updateBalanceError) {
@@ -126,25 +126,25 @@ export async function POST(request: NextRequest) {
     // Update or delete portfolio holding
     if (newQuantity > 0) {
       // Update with remaining quantity
-      const { error: portfolioError } = await supabase
+      const { error: portfolioError } = await (supabase
         .from('portfolios')
-        .update({
+        .update as any)({
           quantity: newQuantity,
           total_invested: newTotalInvested,
           // Keep the same average buy price
-        } as any)
+        })
         .eq('user_id', user.id)
         .eq('symbol', symbol)
         .eq('asset_type', assetType);
 
       if (portfolioError) {
         // Rollback balance update
-        await supabase
+        await (supabase
           .from('balances')
-          .update({
+          .update as any)({
             available_cash: userBalance.available_cash,
             total_invested: userBalance.total_invested,
-          } as any)
+          })
           .eq('user_id', user.id);
 
         return NextResponse.json(
@@ -163,12 +163,12 @@ export async function POST(request: NextRequest) {
 
       if (deleteError) {
         // Rollback balance update
-        await supabase
+        await (supabase
           .from('balances')
-          .update({
+          .update as any)({
             available_cash: userBalance.available_cash,
             total_invested: userBalance.total_invested,
-          } as any)
+          })
           .eq('user_id', user.id);
 
         return NextResponse.json(

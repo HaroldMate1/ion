@@ -109,12 +109,12 @@ export async function POST(request: NextRequest) {
     const newTotalInvestedBalance = Number(userBalance.total_invested) + subtotal;
 
     // Update balance
-    const { error: updateBalanceError } = await supabase
+    const { error: updateBalanceError } = await (supabase
       .from('balances')
-      .update({
+      .update as any)({
         available_cash: newBalance,
         total_invested: newTotalInvestedBalance,
-      } as any)
+      })
       .eq('user_id', user.id);
 
     if (updateBalanceError) {
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Upsert portfolio holding
-    const { error: portfolioError } = await supabase.from('portfolios').upsert(
+    const { error: portfolioError } = await (supabase.from('portfolios').upsert as any)(
       {
         user_id: user.id,
         symbol,
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
         quantity: newQuantity,
         average_buy_price: newAverageBuyPrice,
         total_invested: newTotalInvested,
-      } as any,
+      },
       {
         onConflict: 'user_id,symbol,asset_type',
       }
@@ -142,12 +142,12 @@ export async function POST(request: NextRequest) {
 
     if (portfolioError) {
       // Rollback balance update
-      await supabase
+      await (supabase
         .from('balances')
-        .update({
+        .update as any)({
           available_cash: userBalance.available_cash,
           total_invested: userBalance.total_invested,
-        } as any)
+        })
         .eq('user_id', user.id);
 
       return NextResponse.json(
