@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
       .update({
         available_cash: newBalance,
         total_invested: newTotalInvestedBalance,
-      })
+      } as any)
       .eq('user_id', user.id);
 
     if (updateBalanceError) {
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
           quantity: newQuantity,
           total_invested: newTotalInvested,
           // Keep the same average buy price
-        })
+        } as any)
         .eq('user_id', user.id)
         .eq('symbol', symbol)
         .eq('asset_type', assetType);
@@ -142,9 +142,9 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('balances')
           .update({
-            available_cash: balance.available_cash,
-            total_invested: balance.total_invested,
-          })
+            available_cash: userBalance.available_cash,
+            total_invested: userBalance.total_invested,
+          } as any)
           .eq('user_id', user.id);
 
         return NextResponse.json(
@@ -166,9 +166,9 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('balances')
           .update({
-            available_cash: balance.available_cash,
-            total_invested: balance.total_invested,
-          })
+            available_cash: userBalance.available_cash,
+            total_invested: userBalance.total_invested,
+          } as any)
           .eq('user_id', user.id);
 
         return NextResponse.json(

@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       .update({
         available_cash: newBalance,
         total_invested: newTotalInvestedBalance,
-      })
+      } as any)
       .eq('user_id', user.id);
 
     if (updateBalanceError) {
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
         quantity: newQuantity,
         average_buy_price: newAverageBuyPrice,
         total_invested: newTotalInvested,
-      },
+      } as any,
       {
         onConflict: 'user_id,symbol,asset_type',
       }
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
         .update({
           available_cash: userBalance.available_cash,
           total_invested: userBalance.total_invested,
-        })
+        } as any)
         .eq('user_id', user.id);
 
       return NextResponse.json(
