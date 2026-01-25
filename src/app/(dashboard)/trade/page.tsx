@@ -17,6 +17,7 @@ import { useBalance, useBuyTrade, useSellTrade } from '@/hooks/use-portfolio';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import type { AssetType } from '@/types';
+import { PriceChart } from '@/components/charts/price-chart';
 
 export default function TradePage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -42,85 +43,165 @@ export default function TradePage() {
         </p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Search Panel */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Search Assets</CardTitle>
-            <CardDescription>Find stocks, ETFs, and cryptocurrencies</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by symbol or name (e.g., AAPL, Bitcoin)"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-
-            {searchLoading && (
-              <div className="text-center py-8 text-muted-foreground">Searching...</div>
-            )}
-
-            {searchResults && searchQuery.length >= 2 && !searchLoading && (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {searchResults.all.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No results found
-                  </div>
-                ) : (
-                  searchResults.all.map((asset: any, index: number) => (
-                    <button
-                      key={index}
-                      onClick={() =>
-                        setSelectedAsset({
-                          symbol: asset.symbol,
-                          name: asset.name,
-                          type: asset.asset_type,
-                        })
-                      }
-                      className="w-full text-left p-3 rounded-lg border hover:bg-accent transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-semibold">{asset.symbol}</div>
-                          <div className="text-sm text-muted-foreground">{asset.name}</div>
-                        </div>
-                        <Badge variant={asset.asset_type === 'crypto' ? 'default' : 'secondary'}>
-                          {asset.asset_type.toUpperCase()}
-                        </Badge>
-                      </div>
-                    </button>
-                  ))
-                )}
+      {!selectedAsset ? (
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Search Panel */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Search Assets</CardTitle>
+              <CardDescription>Find stocks, ETFs, and cryptocurrencies</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by symbol or name (e.g., AAPL, Bitcoin)"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
               </div>
-            )}
-          </CardContent>
-        </Card>
 
-        {/* Trade Panel */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Trade</CardTitle>
-            <CardDescription>
-              {balance
-                ? `Available Cash: $${balance.available_cash.toFixed(2)}`
-                : 'Loading balance...'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {selectedAsset ? (
-              <TradeForm asset={selectedAsset} />
-            ) : (
+              {searchLoading && (
+                <div className="text-center py-8 text-muted-foreground">Searching...</div>
+              )}
+
+              {searchResults && searchQuery.length >= 2 && !searchLoading && (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {searchResults.all.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No results found
+                    </div>
+                  ) : (
+                    searchResults.all.map((asset: any, index: number) => (
+                      <button
+                        key={index}
+                        onClick={() =>
+                          setSelectedAsset({
+                            symbol: asset.symbol,
+                            name: asset.name,
+                            type: asset.asset_type,
+                          })
+                        }
+                        className="w-full text-left p-3 rounded-lg border hover:bg-accent transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-semibold">{asset.symbol}</div>
+                            <div className="text-sm text-muted-foreground">{asset.name}</div>
+                          </div>
+                          <Badge variant={asset.asset_type === 'crypto' ? 'default' : 'secondary'}>
+                            {asset.asset_type.toUpperCase()}
+                          </Badge>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Trade Panel - Empty State */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Trade</CardTitle>
+              <CardDescription>
+                {balance
+                  ? `Available Cash: $${balance.available_cash.toFixed(2)}`
+                  : 'Loading balance...'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
               <div className="text-center py-12 text-muted-foreground">
                 Search and select an asset to start trading
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Back to search button */}
+          <Button variant="outline" onClick={() => setSelectedAsset(null)}>
+            ← Back to Search
+          </Button>
+
+          <div className="grid lg:grid-cols-3 gap-6">
+            {/* Chart and Asset Info - Takes 2 columns */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>{selectedAsset.name}</CardTitle>
+                <CardDescription>{selectedAsset.symbol}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AssetChart asset={selectedAsset} />
+              </CardContent>
+            </Card>
+
+            {/* Trade Panel - Takes 1 column */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Trade</CardTitle>
+                <CardDescription>
+                  {balance
+                    ? `Available Cash: $${balance.available_cash.toFixed(2)}`
+                    : 'Loading balance...'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TradeForm asset={selectedAsset} />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssetChart({
+  asset,
+}: {
+  asset: { symbol: string; name: string; type: AssetType };
+}) {
+  const { data: quote, isLoading: quoteLoading } = useMarketQuote(asset.symbol, asset.type);
+
+  if (quoteLoading) {
+    return <div className="text-center py-8">Loading price data...</div>;
+  }
+
+  if (!quote) {
+    return <div className="text-center py-8 text-destructive">Failed to load price data</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+        <div>
+          <div className="text-sm text-muted-foreground">Current Price</div>
+          <div className="text-3xl font-bold">${quote.price.toFixed(2)}</div>
+        </div>
+        {quote.change_24h !== undefined && (
+          <div
+            className={`flex items-center gap-2 ${
+              quote.change_24h >= 0 ? 'text-green-600' : 'text-red-600'
+            }`}
+          >
+            {quote.change_24h >= 0 ? (
+              <TrendingUp className="h-5 w-5" />
+            ) : (
+              <TrendingDown className="h-5 w-5" />
             )}
-          </CardContent>
-        </Card>
+            <span className="text-xl font-semibold">{quote.change_24h.toFixed(2)}%</span>
+          </div>
+        )}
       </div>
+
+      <PriceChart
+        symbol={asset.symbol}
+        assetType={asset.type}
+        currentPrice={quote.price}
+      />
     </div>
   );
 }
@@ -191,35 +272,10 @@ function TradeForm({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="font-semibold text-lg">{asset.name}</h3>
-        <p className="text-sm text-muted-foreground">{asset.symbol}</p>
-      </div>
-
       {quoteLoading ? (
-        <div className="text-center py-4">Loading price...</div>
+        <div className="text-center py-4">Loading...</div>
       ) : quote ? (
         <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-            <div>
-              <div className="text-sm text-muted-foreground">Current Price</div>
-              <div className="text-2xl font-bold">${quote.price.toFixed(2)}</div>
-            </div>
-            {quote.change_24h !== undefined && (
-              <div
-                className={`flex items-center gap-1 ${
-                  quote.change_24h >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}
-              >
-                {quote.change_24h >= 0 ? (
-                  <TrendingUp className="h-4 w-4" />
-                ) : (
-                  <TrendingDown className="h-4 w-4" />
-                )}
-                <span className="font-semibold">{quote.change_24h.toFixed(2)}%</span>
-              </div>
-            )}
-          </div>
 
           <Tabs value={action} onValueChange={(v) => setAction(v as 'buy' | 'sell')}>
             <TabsList className="grid w-full grid-cols-2">
