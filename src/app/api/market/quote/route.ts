@@ -47,12 +47,14 @@ export async function GET(request: NextRequest) {
     const ttlMs = CACHE_TTL_MINUTES[assetType] * 60 * 1000;
     let isCacheValid = false;
 
-    if (!cacheError && cachedPrice && typeof cachedPrice === 'object' && 'cached_at' in cachedPrice) {
-      const cachedAt = cachedPrice.cached_at as string;
-      isCacheValid = new Date().getTime() - new Date(cachedAt).getTime() < ttlMs;
+    if (!cacheError && cachedPrice) {
+      const cached = cachedPrice as any;
+      if (cached.cached_at) {
+        isCacheValid = new Date().getTime() - new Date(cached.cached_at).getTime() < ttlMs;
+      }
     }
 
-    if (isCacheValid && cachedPrice && typeof cachedPrice === 'object') {
+    if (isCacheValid && cachedPrice) {
       const cached = cachedPrice as any;
       return NextResponse.json({
         symbol: cached.symbol,
