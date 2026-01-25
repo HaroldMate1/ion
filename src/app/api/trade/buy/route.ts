@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       .from('balances')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (balanceError || !balance) {
       return NextResponse.json(
@@ -65,13 +65,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const userBalance = balance as any;
+
     // Check if user has sufficient funds
-    if (balance.available_cash < totalCost) {
+    if (userBalance.available_cash < totalCost) {
       return NextResponse.json(
         {
           error: 'Insufficient funds',
           required: totalCost,
-          available: balance.available_cash,
+          available: userBalance.available_cash,
         },
         { status: 400 }
       );
@@ -84,7 +86,7 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
       .eq('symbol', symbol)
       .eq('asset_type', assetType)
-      .single();
+      .maybeSingle();
 
     // Calculate new average buy price and total invested
     let newQuantity: number;
@@ -92,8 +94,9 @@ export async function POST(request: NextRequest) {
     let newTotalInvested: number;
 
     if (existingHolding) {
-      newQuantity = Number(existingHolding.quantity) + quantity;
-      newTotalInvested = Number(existingHolding.total_invested) + subtotal;
+      const existing = existingHolding as any;
+      newQuantity = Number(existing.quantity) + quantity;
+      newTotalInvested = Number(existing.total_invested) + subtotal;
       newAverageBuyPrice = newTotalInvested / newQuantity;
     } else {
       newQuantity = quantity;
@@ -102,8 +105,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Execute transaction (update balance, portfolio, and create transaction record)
-    const newBalance = balance.available_cash - totalCost;
-    const newTotalInvestedBalance = Number(balance.total_invested) + subtotal;
+    const newBalance = userBalance.available_cash - totalCost;
+    const newTotalInvestedBalance = Number(userBalance.total_invested) + subtotal;
 
     // Update balance
     const { error: updateBalanceError } = await supabase
@@ -142,8 +145,8 @@ export async function POST(request: NextRequest) {
       await supabase
         .from('balances')
         .update({
-          available_cash: balance.available_cash,
-          total_invested: balance.total_invested,
+          available_cash: userBalance.available_cash,
+          total_invested: userBalance.total_invested,
         })
         .eq('user_id', user.id);
 

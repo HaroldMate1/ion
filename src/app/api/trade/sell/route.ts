@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
       .eq('symbol', symbol)
       .eq('asset_type', assetType)
-      .single();
+      .maybeSingle();
 
     if (holdingError || !holding) {
       return NextResponse.json(
@@ -67,8 +67,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const userHolding = holding as any;
+
     // Check if user has sufficient quantity
-    const currentQuantity = Number(holding.quantity);
+    const currentQuantity = Number(userHolding.quantity);
     if (currentQuantity < quantity) {
       return NextResponse.json(
         {
@@ -85,7 +87,7 @@ export async function POST(request: NextRequest) {
       .from('balances')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (balanceError || !balance) {
       return NextResponse.json(
@@ -94,15 +96,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const userBalance = balance as any;
+
     // Calculate new quantities
     const newQuantity = currentQuantity - quantity;
     const proportionSold = quantity / currentQuantity;
-    const amountInvestedInSold = Number(holding.total_invested) * proportionSold;
-    const newTotalInvested = Number(holding.total_invested) - amountInvestedInSold;
+    const amountInvestedInSold = Number(userHolding.total_invested) * proportionSold;
+    const newTotalInvested = Number(userHolding.total_invested) - amountInvestedInSold;
 
     // Update balance
-    const newBalance = Number(balance.available_cash) + totalProceeds;
-    const newTotalInvestedBalance = Number(balance.total_invested) - amountInvestedInSold;
+    const newBalance = Number(userBalance.available_cash) + totalProceeds;
+    const newTotalInvestedBalance = Number(userBalance.total_invested) - amountInvestedInSold;
 
     const { error: updateBalanceError } = await supabase
       .from('balances')
