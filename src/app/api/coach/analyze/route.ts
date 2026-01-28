@@ -10,7 +10,6 @@ import { runBatchAnalysis, parseWatchSymbol } from '@/lib/coach/engine/coachEngi
 import { DEFAULT_COACH_CONFIG } from '@/lib/coach/types';
 import type { OHLCData } from '@/lib/coach/types';
 import type { AssetType, Market } from '@/types';
-import { getHistoricalData as getCryptoHistorical, searchCrypto } from '@/lib/api/coingecko';
 import { getHistoricalData as getYahooHistorical } from '@/lib/api/yahoo-finance';
 import { getMarketQuote } from '@/lib/api/market-data';
 
@@ -112,30 +111,9 @@ export async function POST(request: NextRequest) {
         let historicalData: any[] | null = null;
 
         if (assetType === 'crypto') {
-          // For crypto, first convert symbol to coin ID
-          const searchResults = await searchCrypto(symbol);
-          const coin = searchResults.find(
-            (c) => c.symbol.toLowerCase() === symbol.toLowerCase()
-          );
-
-          if (!coin) {
-            console.log(`Crypto coin ID not found for symbol ${symbol}`);
-            return null;
-          }
-
-          historicalData = await getCryptoHistorical(coin.id, 90);
-
-          // CoinGecko returns simplified format, convert to pseudo-OHLC
-          if (historicalData) {
-            historicalData = historicalData.map((d: any) => ({
-              date: d.date,
-              open: d.price,
-              high: d.price,
-              low: d.price,
-              close: d.price,
-              volume: 0,
-            }));
-          }
+          // For crypto, use Yahoo Finance with -USD suffix (e.g., BTC-USD, ETH-USD)
+          const yahooSymbol = `${symbol.toUpperCase()}-USD`;
+          historicalData = await getYahooHistorical(yahooSymbol, 90);
         } else {
           // All stocks/ETFs use Yahoo Finance (works for US, Europe, Colombia)
           historicalData = await getYahooHistorical(symbol, 90);
