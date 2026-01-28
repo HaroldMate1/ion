@@ -1,13 +1,36 @@
 /**
  * Yahoo Finance API Client
  * For European and Colombian market data
- * Uses unofficial Yahoo Finance API endpoints
+ * Uses Yahoo Finance API endpoints with multiple fallbacks
  */
 
 import axios from 'axios';
 
-const BASE_URL = 'https://query1.finance.yahoo.com/v8/finance';
+// Multiple endpoints for fallback
+const QUOTE_URL = 'https://query1.finance.yahoo.com/v7/finance/quote';
+const CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const SEARCH_URL = 'https://query1.finance.yahoo.com/v1/finance';
+
+// Randomized User-Agents to avoid detection
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+];
+
+function getRandomUserAgent(): string {
+  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
+
+function getHeaders() {
+  return {
+    'User-Agent': getRandomUserAgent(),
+    'Accept': 'application/json,text/html,application/xhtml+xml',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Cache-Control': 'no-cache',
+  };
+}
 
 export interface YahooQuote {
   symbol: string;
@@ -27,21 +50,47 @@ export interface YahooSearchResult {
 }
 
 /**
- * Get real-time quote for a symbol
+ * Get real-time quote for a symbol using v7 quote endpoint (more reliable)
  * Supports international symbols like:
  * - Europe: SAP.DE (Germany), ASML.AS (Netherlands), MC.PA (France)
  * - Colombia: ECOPETROL.CL, PFBCOLOM.CL, GRUPOSUR.CL
  */
 export async function getQuote(symbol: string): Promise<YahooQuote | null> {
+  // Try v7 quote endpoint first (more reliable for server-side)
   try {
-    const response = await axios.get(`${BASE_URL}/chart/${encodeURIComponent(symbol)}`, {
+    const response = await axios.get(QUOTE_URL, {
+      params: {
+        symbols: symbol,
+        fields: 'regularMarketPrice,regularMarketChange,regularMarketChangePercent,currency,marketState,regularMarketPreviousClose',
+      },
+      headers: getHeaders(),
+      timeout: 10000,
+    });
+
+    const quote = response.data?.quoteResponse?.result?.[0];
+    if (quote && quote.regularMarketPrice) {
+      return {
+        symbol: symbol.toUpperCase(),
+        price: quote.regularMarketPrice,
+        change: quote.regularMarketChange || 0,
+        changePercent: quote.regularMarketChangePercent || 0,
+        currency: quote.currency || 'USD',
+        marketState: quote.marketState || 'CLOSED',
+      };
+    }
+  } catch (error: any) {
+    console.error('Yahoo Finance v7 quote error, trying chart fallback:', error?.message || error);
+  }
+
+  // Fallback to chart endpoint
+  try {
+    const response = await axios.get(`${CHART_URL}/${encodeURIComponent(symbol)}`, {
       params: {
         interval: '1d',
         range: '1d',
       },
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
+      headers: getHeaders(),
+      timeout: 10000,
     });
 
     const result = response.data?.chart?.result?.[0];
@@ -64,8 +113,8 @@ export async function getQuote(symbol: string): Promise<YahooQuote | null> {
       currency: meta.currency || 'USD',
       marketState: meta.marketState || 'CLOSED',
     };
-  } catch (error) {
-    console.error('Yahoo Finance quote error:', error);
+  } catch (error: any) {
+    console.error('Yahoo Finance chart error:', error?.message || error);
     return null;
   }
 }
@@ -83,9 +132,8 @@ export async function searchSymbol(query: string): Promise<YahooSearchResult[]> 
         enableFuzzyQuery: true,
         quotesQueryId: 'tss_match_phrase_query',
       },
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
+      headers: getHeaders(),
+      timeout: 10000,
     });
 
     const quotes = response.data?.quotes || [];
@@ -97,8 +145,8 @@ export async function searchSymbol(query: string): Promise<YahooSearchResult[]> 
       exchange: item.exchange || '',
       currency: item.currency || 'USD',
     }));
-  } catch (error) {
-    console.error('Yahoo Finance search error:', error);
+  } catch (error: any) {
+    console.error('Yahoo Finance search error:', error?.message || error);
     return [];
   }
 }
@@ -108,14 +156,13 @@ export async function searchSymbol(query: string): Promise<YahooSearchResult[]> 
  */
 export async function getHistoricalData(symbol: string, days: number = 30) {
   try {
-    const response = await axios.get(`${BASE_URL}/chart/${encodeURIComponent(symbol)}`, {
+    const response = await axios.get(`${CHART_URL}/${encodeURIComponent(symbol)}`, {
       params: {
         interval: '1d',
         range: days <= 30 ? '1mo' : days <= 90 ? '3mo' : '6mo',
       },
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
+      headers: getHeaders(),
+      timeout: 10000,
     });
 
     const result = response.data?.chart?.result?.[0];
@@ -132,8 +179,8 @@ export async function getHistoricalData(symbol: string, days: number = 30) {
       close: quotes.close?.[index],
       volume: quotes.volume?.[index],
     })).filter((item: any) => item.close != null);
-  } catch (error) {
-    console.error('Yahoo Finance historical data error:', error);
+  } catch (error: any) {
+    console.error('Yahoo Finance historical data error:', error?.message || error);
     return null;
   }
 }
