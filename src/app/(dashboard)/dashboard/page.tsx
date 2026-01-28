@@ -10,7 +10,8 @@ import { useBalance, usePortfolio, usePortfolioSummary } from '@/hooks/use-portf
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DollarSign, TrendingUp, Activity, ArrowRight } from 'lucide-react';
+import { DollarSign, TrendingUp, Activity, ArrowRight, Brain } from 'lucide-react';
+import { useCoachSummary } from '@/hooks/use-coach';
 import Link from 'next/link';
 
 export default function DashboardPage() {
@@ -18,6 +19,7 @@ export default function DashboardPage() {
   const { data: balance } = useBalance();
   const { holdings } = usePortfolio();
   const summary = usePortfolioSummary();
+  const coachSummary = useCoachSummary();
 
   return (
     <div className="space-y-8">
@@ -38,7 +40,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Available Cash</CardTitle>
@@ -109,6 +111,32 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        <Link href="/coach">
+          <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Trading Coach</CardTitle>
+              <Brain className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              {!coachSummary.isLoading ? (
+                <>
+                  <div className="text-2xl font-bold">
+                    {coachSummary.actionableSignals}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {coachSummary.actionableSignals === 1 ? 'Signal' : 'Signals'} ready • {coachSummary.openTrades} open trades
+                  </p>
+                  {coachSummary.killSwitchActive && (
+                    <p className="text-xs text-destructive mt-1">Kill switch active</p>
+                  )}
+                </>
+              ) : (
+                <div className="text-2xl font-bold">Loading...</div>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       {/* Holdings */}
@@ -153,7 +181,7 @@ export default function DashboardPage() {
                       <TableCell className="text-right">${holding.average_buy_price.toFixed(2)}</TableCell>
                       <TableCell className="text-right">
                         {isPriceAvailable ? (
-                          `$${holding.current_price.toFixed(2)}`
+                          `$${holding.current_price!.toFixed(2)}`
                         ) : (
                           <span className="text-muted-foreground text-xs">Price unavailable</span>
                         )}
