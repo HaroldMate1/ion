@@ -10,7 +10,6 @@ import { runBatchAnalysis, parseWatchSymbol } from '@/lib/coach/engine/coachEngi
 import { DEFAULT_COACH_CONFIG } from '@/lib/coach/types';
 import type { OHLCData } from '@/lib/coach/types';
 import type { AssetType, Market } from '@/types';
-import { getHistoricalData as getFinnhubHistorical } from '@/lib/api/finnhub';
 import { getHistoricalData as getCryptoHistorical, searchCrypto } from '@/lib/api/coingecko';
 import { getHistoricalData as getYahooHistorical } from '@/lib/api/yahoo-finance';
 import { getMarketQuote } from '@/lib/api/market-data';
@@ -137,11 +136,8 @@ export async function POST(request: NextRequest) {
               volume: 0,
             }));
           }
-        } else if (market === 'us') {
-          // US stocks/ETFs use Finnhub
-          historicalData = await getFinnhubHistorical(symbol, 90);
         } else {
-          // Europe/Colombia use Yahoo Finance
+          // All stocks/ETFs use Yahoo Finance (works for US, Europe, Colombia)
           historicalData = await getYahooHistorical(symbol, 90);
         }
 
