@@ -1,6 +1,7 @@
 /**
  * Market Quote API Route
  * Get current price for a stock, ETF, or cryptocurrency with caching
+ * Returns cached prices when API fails (with stale indicator)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -54,59 +55,85 @@ export async function GET(request: NextRequest) {
 
     const ttlMs = CACHE_TTL_MINUTES[assetType] * 60 * 1000;
     let isCacheValid = false;
+    let cacheAgeMinutes = 0;
 
     if (!cacheError && cachedPrice) {
       const cached = cachedPrice as any;
       if (cached.cached_at) {
-        isCacheValid = new Date().getTime() - new Date(cached.cached_at).getTime() < ttlMs;
+        const cacheAge = new Date().getTime() - new Date(cached.cached_at).getTime();
+        cacheAgeMinutes = Math.floor(cacheAge / 60000);
+        isCacheValid = cacheAge < ttlMs;
       }
     }
 
+    // Return valid cache
     if (isCacheValid && cachedPrice) {
       const cached = cachedPrice as any;
       return NextResponse.json({
         symbol: cached.symbol,
         asset_type: cached.asset_type,
+        market: market,
         price: Number(cached.price),
         change_24h: cached.change_24h ? Number(cached.change_24h) : null,
         volume_24h: cached.volume_24h ? Number(cached.volume_24h) : null,
         market_cap: cached.market_cap ? Number(cached.market_cap) : null,
         cached: true,
+        stale: false,
       });
     }
 
-    // Fetch fresh data from market APIs
+    // Try to fetch fresh data from market APIs
     const quote = await getMarketQuote(symbol, assetType, market);
 
-    if (!quote) {
-      return NextResponse.json(
-        { error: 'Asset not found or API error' },
-        { status: 404 }
-      );
+    if (quote) {
+      // Update cache with fresh data
+      await supabase
+        .from('price_cache')
+        .upsert(
+          {
+            symbol: quote.symbol.toUpperCase(),
+            asset_type: quote.asset_type,
+            price: quote.price,
+            change_24h: quote.change_24h,
+            volume_24h: quote.volume_24h,
+            market_cap: quote.market_cap,
+            cached_at: new Date().toISOString(),
+          } as any,
+          {
+            onConflict: 'symbol,asset_type',
+          }
+        );
+
+      return NextResponse.json({
+        ...quote,
+        cached: false,
+        stale: false,
+      });
     }
 
-    // Update cache
-    await supabase
-      .from('price_cache')
-      .upsert(
-        {
-          symbol: quote.symbol.toUpperCase(),
-          asset_type: quote.asset_type,
-          price: quote.price,
-          change_24h: quote.change_24h,
-          volume_24h: quote.volume_24h,
-          market_cap: quote.market_cap,
-          cached_at: new Date().toISOString(),
-        } as any,
-        {
-          onConflict: 'symbol,asset_type',
-        }
-      );
+    // API failed - return stale cache if available
+    if (cachedPrice) {
+      const cached = cachedPrice as any;
+      console.log(`Returning stale cache for ${symbol} (${cacheAgeMinutes} minutes old)`);
+      return NextResponse.json({
+        symbol: cached.symbol,
+        asset_type: cached.asset_type,
+        market: market,
+        price: Number(cached.price),
+        change_24h: cached.change_24h ? Number(cached.change_24h) : null,
+        volume_24h: cached.volume_24h ? Number(cached.volume_24h) : null,
+        market_cap: cached.market_cap ? Number(cached.market_cap) : null,
+        cached: true,
+        stale: true,
+        cacheAgeMinutes: cacheAgeMinutes,
+      });
+    }
 
-    return NextResponse.json({
-      ...quote,
-      cached: false,
-    });
+    // No cache and API failed
+    return NextResponse.json(
+      { error: 'Asset not found or API error' },
+      { status: 404 }
+    );
   } catch (error) {
     console.error('Quote API error:', error);
     return NextResponse.json(
