@@ -58,7 +58,10 @@ export default function CoachPage() {
 
       if (result.errors && result.errors.length > 0) {
         console.error('Analysis errors:', result.errors);
-        toast.error(`Analysis had ${result.errors.length} error(s). Check console for details.`);
+        // Show each error in a separate toast for visibility
+        result.errors.forEach((err: string) => {
+          toast.error(err);
+        });
       }
     } catch (error: any) {
       console.error('Run analysis error:', error);
