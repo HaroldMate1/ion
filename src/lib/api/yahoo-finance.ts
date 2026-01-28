@@ -4,17 +4,10 @@
  * Uses yahoo-finance2 package for reliable server-side requests
  */
 
-import yahooFinance from 'yahoo-finance2';
+import YahooFinance from 'yahoo-finance2';
 
-// Configure yahoo-finance2 options
-try {
-  // Suppress notices if available (API may vary between versions)
-  if (typeof yahooFinance.setGlobalConfig === 'function') {
-    yahooFinance.setGlobalConfig({ validation: { logErrors: false } });
-  }
-} catch {
-  // Ignore configuration errors
-}
+// Create yahoo-finance2 instance
+const yahooFinance = new YahooFinance();
 
 export interface YahooQuote {
   symbol: string;

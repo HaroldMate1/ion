@@ -6,6 +6,11 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { config } from 'dotenv';
+import { resolve } from 'path';
+
+// Load .env.local
+config({ path: resolve(process.cwd(), '.env.local') });
 
 // These should match your .env.local
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -27,20 +32,13 @@ const SYMBOLS_TO_SEED = [
   { symbol: 'SXR8.DE', assetType: 'etf' },
 ];
 
+import YahooFinance from 'yahoo-finance2';
+
+const yahooFinance = new YahooFinance();
+
 async function fetchYahooQuote(symbol: string): Promise<{ price: number; change: number } | null> {
   try {
-    // Use the yahoo-finance2 package or direct fetch
-    const response = await fetch(
-      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent`,
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
-      }
-    );
-
-    const data = await response.json();
-    const quote = data?.quoteResponse?.result?.[0];
+    const quote = await yahooFinance.quote(symbol);
 
     if (quote && quote.regularMarketPrice) {
       return {
