@@ -1,35 +1,19 @@
 /**
  * Yahoo Finance API Client
  * For European and Colombian market data
- * Uses Yahoo Finance API endpoints with multiple fallbacks
+ * Uses yahoo-finance2 package for reliable server-side requests
  */
 
-import axios from 'axios';
+import yahooFinance from 'yahoo-finance2';
 
-// Multiple endpoints for fallback
-const QUOTE_URL = 'https://query1.finance.yahoo.com/v7/finance/quote';
-const CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
-const SEARCH_URL = 'https://query1.finance.yahoo.com/v1/finance';
-
-// Randomized User-Agents to avoid detection
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
-];
-
-function getRandomUserAgent(): string {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
-
-function getHeaders() {
-  return {
-    'User-Agent': getRandomUserAgent(),
-    'Accept': 'application/json,text/html,application/xhtml+xml',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Cache-Control': 'no-cache',
-  };
+// Configure yahoo-finance2 options
+try {
+  // Suppress notices if available (API may vary between versions)
+  if (typeof yahooFinance.setGlobalConfig === 'function') {
+    yahooFinance.setGlobalConfig({ validation: { logErrors: false } });
+  }
+} catch {
+  // Ignore configuration errors
 }
 
 export interface YahooQuote {
@@ -50,71 +34,31 @@ export interface YahooSearchResult {
 }
 
 /**
- * Get real-time quote for a symbol using v7 quote endpoint (more reliable)
+ * Get real-time quote for a symbol
  * Supports international symbols like:
  * - Europe: SAP.DE (Germany), ASML.AS (Netherlands), MC.PA (France)
  * - Colombia: ECOPETROL.CL, PFBCOLOM.CL, GRUPOSUR.CL
  */
 export async function getQuote(symbol: string): Promise<YahooQuote | null> {
-  // Try v7 quote endpoint first (more reliable for server-side)
   try {
-    const response = await axios.get(QUOTE_URL, {
-      params: {
-        symbols: symbol,
-        fields: 'regularMarketPrice,regularMarketChange,regularMarketChangePercent,currency,marketState,regularMarketPreviousClose',
-      },
-      headers: getHeaders(),
-      timeout: 10000,
+    const quote = await yahooFinance.quote(symbol, {
+      fields: ['regularMarketPrice', 'regularMarketChange', 'regularMarketChangePercent', 'currency', 'marketState'],
     });
 
-    const quote = response.data?.quoteResponse?.result?.[0];
-    if (quote && quote.regularMarketPrice) {
-      return {
-        symbol: symbol.toUpperCase(),
-        price: quote.regularMarketPrice,
-        change: quote.regularMarketChange || 0,
-        changePercent: quote.regularMarketChangePercent || 0,
-        currency: quote.currency || 'USD',
-        marketState: quote.marketState || 'CLOSED',
-      };
+    if (!quote || !quote.regularMarketPrice) {
+      return null;
     }
-  } catch (error: any) {
-    console.error('Yahoo Finance v7 quote error, trying chart fallback:', error?.message || error);
-  }
-
-  // Fallback to chart endpoint
-  try {
-    const response = await axios.get(`${CHART_URL}/${encodeURIComponent(symbol)}`, {
-      params: {
-        interval: '1d',
-        range: '1d',
-      },
-      headers: getHeaders(),
-      timeout: 10000,
-    });
-
-    const result = response.data?.chart?.result?.[0];
-    if (!result) return null;
-
-    const meta = result.meta;
-    const currentPrice = meta.regularMarketPrice;
-    const previousClose = meta.previousClose || meta.chartPreviousClose;
-
-    if (!currentPrice || currentPrice === 0) return null;
-
-    const change = currentPrice - previousClose;
-    const changePercent = previousClose > 0 ? (change / previousClose) * 100 : 0;
 
     return {
       symbol: symbol.toUpperCase(),
-      price: currentPrice,
-      change: change,
-      changePercent: changePercent,
-      currency: meta.currency || 'USD',
-      marketState: meta.marketState || 'CLOSED',
+      price: quote.regularMarketPrice,
+      change: quote.regularMarketChange || 0,
+      changePercent: quote.regularMarketChangePercent || 0,
+      currency: quote.currency || 'USD',
+      marketState: quote.marketState || 'CLOSED',
     };
   } catch (error: any) {
-    console.error('Yahoo Finance chart error:', error?.message || error);
+    console.error('Yahoo Finance quote error:', error?.message || error);
     return null;
   }
 }
@@ -124,21 +68,14 @@ export async function getQuote(symbol: string): Promise<YahooQuote | null> {
  */
 export async function searchSymbol(query: string): Promise<YahooSearchResult[]> {
   try {
-    const response = await axios.get(`${SEARCH_URL}/search`, {
-      params: {
-        q: query,
-        quotesCount: 10,
-        newsCount: 0,
-        enableFuzzyQuery: true,
-        quotesQueryId: 'tss_match_phrase_query',
-      },
-      headers: getHeaders(),
-      timeout: 10000,
+    const results = await yahooFinance.search(query, {
+      quotesCount: 10,
+      newsCount: 0,
     });
 
-    const quotes = response.data?.quotes || [];
+    if (!results.quotes) return [];
 
-    return quotes.map((item: any) => ({
+    return results.quotes.map((item: any) => ({
       symbol: item.symbol,
       name: item.shortname || item.longname || item.symbol,
       type: item.quoteType || 'EQUITY',
@@ -156,29 +93,28 @@ export async function searchSymbol(query: string): Promise<YahooSearchResult[]> 
  */
 export async function getHistoricalData(symbol: string, days: number = 30) {
   try {
-    const response = await axios.get(`${CHART_URL}/${encodeURIComponent(symbol)}`, {
-      params: {
-        interval: '1d',
-        range: days <= 30 ? '1mo' : days <= 90 ? '3mo' : '6mo',
-      },
-      headers: getHeaders(),
-      timeout: 10000,
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const result = await yahooFinance.chart(symbol, {
+      period1: startDate,
+      period2: endDate,
+      interval: '1d',
     });
 
-    const result = response.data?.chart?.result?.[0];
-    if (!result) return null;
+    if (!result.quotes || result.quotes.length === 0) return null;
 
-    const timestamps = result.timestamp || [];
-    const quotes = result.indicators?.quote?.[0] || {};
-
-    return timestamps.map((timestamp: number, index: number) => ({
-      date: new Date(timestamp * 1000).toISOString().split('T')[0],
-      open: quotes.open?.[index],
-      high: quotes.high?.[index],
-      low: quotes.low?.[index],
-      close: quotes.close?.[index],
-      volume: quotes.volume?.[index],
-    })).filter((item: any) => item.close != null);
+    return result.quotes
+      .filter((q: any) => q.close != null)
+      .map((q: any) => ({
+        date: q.date instanceof Date ? q.date.toISOString().split('T')[0] : new Date(q.date).toISOString().split('T')[0],
+        open: q.open,
+        high: q.high,
+        low: q.low,
+        close: q.close,
+        volume: q.volume,
+      }));
   } catch (error: any) {
     console.error('Yahoo Finance historical data error:', error?.message || error);
     return null;
