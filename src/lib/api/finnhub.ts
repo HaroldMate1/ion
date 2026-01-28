@@ -29,6 +29,7 @@ export interface FinnhubSearchResult {
 
 /**
  * Search for stocks/ETFs by symbol
+ * Only returns US symbols (no international suffixes like .DE, .BC, .L)
  */
 export async function searchSymbol(keywords: string): Promise<FinnhubSearchResult[]> {
   try {
@@ -40,7 +41,11 @@ export async function searchSymbol(keywords: string): Promise<FinnhubSearchResul
     });
 
     const results = response.data.result || [];
-    return results.map((item: any) => ({
+
+    // Filter to only US symbols (no dot suffix like .DE, .BC, .L, etc.)
+    const usResults = results.filter((item: any) => !item.symbol.includes('.'));
+
+    return usResults.map((item: any) => ({
       symbol: item.symbol,
       name: item.description || item.symbol,
       type: item.type || 'Common Stock',
