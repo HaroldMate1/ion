@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import {
   useCoachSummary,
   useCoachSignals,
@@ -45,14 +46,37 @@ export default function CoachPage() {
   const handleRunAnalysis = async () => {
     setIsRunning(true);
     try {
-      await runAnalysis.mutateAsync({});
+      const result = await runAnalysis.mutateAsync({});
+
+      if (result.killSwitchActive) {
+        toast.warning('Kill switch is active. Disable it to run analysis.');
+      } else if (result.signalsGenerated === 0) {
+        toast.info(result.message || 'No signals generated. Add symbols to your watchlist.');
+      } else {
+        toast.success(`Generated ${result.signalsGenerated} signal(s)`);
+      }
+
+      if (result.errors && result.errors.length > 0) {
+        console.error('Analysis errors:', result.errors);
+        toast.error(`Analysis had ${result.errors.length} error(s). Check console for details.`);
+      }
+    } catch (error: any) {
+      console.error('Run analysis error:', error);
+      toast.error(error.message || 'Failed to run analysis');
     } finally {
       setIsRunning(false);
     }
   };
 
   const handleToggleKillSwitch = () => {
-    toggleKillSwitch.mutate(!killSwitchActive);
+    toggleKillSwitch.mutate(!killSwitchActive, {
+      onSuccess: () => {
+        toast.success(killSwitchActive ? 'Kill switch deactivated' : 'Kill switch activated');
+      },
+      onError: (error: any) => {
+        toast.error(error.message || 'Failed to toggle kill switch');
+      },
+    });
   };
 
   if (isLoading) {

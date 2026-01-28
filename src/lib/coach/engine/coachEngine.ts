@@ -184,8 +184,8 @@ export async function runBatchAnalysis(
 
       const { currentPrice, ohlcData } = marketData;
 
-      if (ohlcData.length < 50) {
-        errors.push(`Insufficient data for ${symbol} (need 50+ candles)`);
+      if (ohlcData.length < 20) {
+        errors.push(`Insufficient data for ${symbol} (need 20+ candles, got ${ohlcData.length})`);
         continue;
       }
 

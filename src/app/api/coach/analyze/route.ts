@@ -11,7 +11,8 @@ import { DEFAULT_COACH_CONFIG } from '@/lib/coach/types';
 import type { OHLCData } from '@/lib/coach/types';
 import type { AssetType, Market } from '@/types';
 import { getHistoricalData as getFinnhubHistorical } from '@/lib/api/finnhub';
-import { getHistoricalData as getCryptoHistorical } from '@/lib/api/coingecko';
+import { getHistoricalData as getCryptoHistorical, searchCrypto } from '@/lib/api/coingecko';
+import { getHistoricalData as getYahooHistorical } from '@/lib/api/yahoo-finance';
 import { getMarketQuote } from '@/lib/api/market-data';
 
 export async function POST(request: NextRequest) {
@@ -103,29 +104,60 @@ export async function POST(request: NextRequest) {
       try {
         // Get current price
         const quote = await getMarketQuote(symbol, assetType, market);
-        if (!quote) return null;
+        if (!quote) {
+          console.log(`No quote found for ${symbol}`);
+          return null;
+        }
 
         // Get historical data (90 days for proper indicator calculation)
         let historicalData: any[] | null = null;
 
         if (assetType === 'crypto') {
-          historicalData = await getCryptoHistorical(symbol, 90);
-        } else {
+          // For crypto, first convert symbol to coin ID
+          const searchResults = await searchCrypto(symbol);
+          const coin = searchResults.find(
+            (c) => c.symbol.toLowerCase() === symbol.toLowerCase()
+          );
+
+          if (!coin) {
+            console.log(`Crypto coin ID not found for symbol ${symbol}`);
+            return null;
+          }
+
+          historicalData = await getCryptoHistorical(coin.id, 90);
+
+          // CoinGecko returns simplified format, convert to pseudo-OHLC
+          if (historicalData) {
+            historicalData = historicalData.map((d: any) => ({
+              date: d.date,
+              open: d.price,
+              high: d.price,
+              low: d.price,
+              close: d.price,
+              volume: 0,
+            }));
+          }
+        } else if (market === 'us') {
+          // US stocks/ETFs use Finnhub
           historicalData = await getFinnhubHistorical(symbol, 90);
+        } else {
+          // Europe/Colombia use Yahoo Finance
+          historicalData = await getYahooHistorical(symbol, 90);
         }
 
-        if (!historicalData || historicalData.length < 50) {
+        if (!historicalData || historicalData.length < 20) {
+          console.log(`Insufficient historical data for ${symbol}: ${historicalData?.length || 0} days`);
           return null;
         }
 
         // Transform to OHLC format
         const ohlcData: OHLCData[] = historicalData.map((d: any) => ({
           timestamp: new Date(d.date).getTime(),
-          open: d.open,
-          high: d.high,
-          low: d.low,
+          open: d.open || d.close,
+          high: d.high || d.close,
+          low: d.low || d.close,
           close: d.close,
-          volume: d.volume,
+          volume: d.volume || 0,
         }));
 
         return {
