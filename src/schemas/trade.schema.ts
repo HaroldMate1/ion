@@ -12,6 +12,7 @@ export const tradeSchema = z.object({
   }),
   assetName: z.string().min(1, 'Asset name is required'),
   quantity: z.number().positive('Quantity must be positive'),
+  market: z.enum(['us', 'europe', 'colombia']).default('us'),
 });
 
 export const buySchema = tradeSchema;

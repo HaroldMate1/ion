@@ -6,18 +6,18 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import type { AssetType, MarketQuote, AssetSearchResult } from '@/types';
+import type { AssetType, Market, MarketQuote, AssetSearchResult } from '@/types';
 
 /**
- * Search for assets
+ * Search for assets within a specific market
  */
-export function useAssetSearch(query: string, enabled: boolean = true) {
+export function useAssetSearch(query: string, market: Market = 'us', enabled: boolean = true) {
   return useQuery({
-    queryKey: ['asset-search', query],
+    queryKey: ['asset-search', query, market],
     queryFn: async () => {
       if (!query || query.length < 1) return { stocks: [], cryptos: [], all: [] };
 
-      const response = await fetch(`/api/market/search?q=${encodeURIComponent(query)}`);
+      const response = await fetch(`/api/market/search?q=${encodeURIComponent(query)}&market=${market}`);
       if (!response.ok) throw new Error('Search failed');
       return response.json();
     },
@@ -29,12 +29,12 @@ export function useAssetSearch(query: string, enabled: boolean = true) {
 /**
  * Get market quote for an asset
  */
-export function useMarketQuote(symbol: string, assetType: AssetType, enabled: boolean = true) {
+export function useMarketQuote(symbol: string, assetType: AssetType, market: Market = 'us', enabled: boolean = true) {
   return useQuery<MarketQuote>({
-    queryKey: ['market-quote', symbol, assetType],
+    queryKey: ['market-quote', symbol, assetType, market],
     queryFn: async () => {
       const response = await fetch(
-        `/api/market/quote?symbol=${encodeURIComponent(symbol)}&type=${assetType}`
+        `/api/market/quote?symbol=${encodeURIComponent(symbol)}&type=${assetType}&market=${market}`
       );
       if (!response.ok) throw new Error('Failed to fetch quote');
       return response.json();
@@ -51,14 +51,14 @@ export function useMarketQuote(symbol: string, assetType: AssetType, enabled: bo
  * Get multiple quotes at once
  */
 export function useMarketQuotes(
-  assets: Array<{ symbol: string; assetType: AssetType }>,
+  assets: Array<{ symbol: string; assetType: AssetType; market?: Market }>,
   enabled: boolean = true
 ) {
   return useQuery({
     queryKey: ['market-quotes', assets],
     queryFn: async () => {
       const promises = assets.map((asset) =>
-        fetch(`/api/market/quote?symbol=${encodeURIComponent(asset.symbol)}&type=${asset.assetType}`)
+        fetch(`/api/market/quote?symbol=${encodeURIComponent(asset.symbol)}&type=${asset.assetType}&market=${asset.market || 'us'}`)
           .then((res) => (res.ok ? res.json() : null))
           .catch(() => null) // Don't fail entire batch if one fails
       );

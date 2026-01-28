@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from './use-auth';
 import { useMarketQuotes } from './use-market-data';
-import type { Portfolio, PortfolioSummary } from '@/types';
+import type { Portfolio, PortfolioSummary, Market } from '@/types';
 
 /**
  * Get user's portfolio holdings
@@ -39,6 +39,7 @@ export function usePortfolio() {
   const assets = holdings.map((h) => ({
     symbol: h.symbol,
     assetType: h.asset_type,
+    market: (h.market || 'us') as Market,
   }));
 
   const { data: quotes = [] } = useMarketQuotes(assets, holdings.length > 0);
@@ -62,6 +63,7 @@ export function usePortfolio() {
       symbol: holding.symbol,
       asset_name: holding.asset_name,
       asset_type: holding.asset_type,
+      market: (holding.market || 'us') as Market,
       quantity: Number(holding.quantity),
       average_buy_price: Number(holding.average_buy_price),
       total_invested: Number(holding.total_invested),
@@ -149,11 +151,12 @@ export function useBuyTrade() {
       assetType: string;
       assetName: string;
       quantity: number;
+      market?: Market;
     }) => {
       const response = await fetch('/api/trade/buy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(trade),
+        body: JSON.stringify({ ...trade, market: trade.market || 'us' }),
       });
 
       if (!response.ok) {
@@ -184,11 +187,12 @@ export function useSellTrade() {
       assetType: string;
       assetName: string;
       quantity: number;
+      market?: Market;
     }) => {
       const response = await fetch('/api/trade/sell', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(trade),
+        body: JSON.stringify({ ...trade, market: trade.market || 'us' }),
       });
 
       if (!response.ok) {

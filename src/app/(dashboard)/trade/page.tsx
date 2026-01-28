@@ -16,18 +16,27 @@ import { useAssetSearch, useMarketQuote } from '@/hooks/use-market-data';
 import { useBalance, useBuyTrade, useSellTrade } from '@/hooks/use-portfolio';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import type { AssetType } from '@/types';
+import type { AssetType, Market } from '@/types';
+
+const MARKET_OPTIONS: { value: Market; label: string; flag: string }[] = [
+  { value: 'us', label: 'US Market', flag: '🇺🇸' },
+  { value: 'europe', label: 'Europe', flag: '🇪🇺' },
+  { value: 'colombia', label: 'Colombia', flag: '🇨🇴' },
+];
 
 export default function TradePage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedMarket, setSelectedMarket] = useState<Market>('us');
   const [selectedAsset, setSelectedAsset] = useState<{
     symbol: string;
     name: string;
     type: AssetType;
+    market: Market;
   } | null>(null);
 
   const { data: searchResults, isLoading: searchLoading } = useAssetSearch(
     searchQuery,
+    selectedMarket,
     searchQuery.length >= 2
   );
 
@@ -50,10 +59,32 @@ export default function TradePage() {
             <CardDescription>Find stocks, ETFs, and cryptocurrencies</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Market Selector */}
+            <div className="flex gap-2">
+              {MARKET_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => {
+                    setSelectedMarket(option.value);
+                    setSearchQuery('');
+                    setSelectedAsset(null);
+                  }}
+                  className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                    selectedMarket === option.value
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'hover:bg-accent border-border'
+                  }`}
+                >
+                  <span className="mr-1">{option.flag}</span>
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by symbol or name (e.g., AAPL, Bitcoin)"
+                placeholder={`Search ${MARKET_OPTIONS.find(m => m.value === selectedMarket)?.label} assets...`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -79,6 +110,7 @@ export default function TradePage() {
                           symbol: asset.symbol,
                           name: asset.name,
                           type: asset.asset_type,
+                          market: selectedMarket,
                         })
                       }
                       className="w-full text-left p-3 rounded-lg border hover:bg-accent transition-colors"
@@ -128,12 +160,12 @@ export default function TradePage() {
 function TradeForm({
   asset,
 }: {
-  asset: { symbol: string; name: string; type: AssetType };
+  asset: { symbol: string; name: string; type: AssetType; market: Market };
 }) {
   const [quantity, setQuantity] = useState('');
   const [action, setAction] = useState<'buy' | 'sell'>('buy');
 
-  const { data: quote, isLoading: quoteLoading } = useMarketQuote(asset.symbol, asset.type);
+  const { data: quote, isLoading: quoteLoading } = useMarketQuote(asset.symbol, asset.type, asset.market);
   const { data: balance } = useBalance();
   const buyTrade = useBuyTrade();
   const sellTrade = useSellTrade();
@@ -165,6 +197,7 @@ function TradeForm({
           assetType: asset.type,
           assetName: asset.name,
           quantity: qty,
+          market: asset.market,
         });
 
         toast.success(`Successfully bought ${qty} ${asset.symbol}`);
@@ -174,6 +207,7 @@ function TradeForm({
           assetType: asset.type,
           assetName: asset.name,
           quantity: qty,
+          market: asset.market,
         });
 
         toast.success(`Successfully sold ${qty} ${asset.symbol}`);

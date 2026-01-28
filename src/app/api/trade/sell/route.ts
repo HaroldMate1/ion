@@ -34,10 +34,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { symbol, assetType, assetName, quantity } = validation.data;
+    const { symbol, assetType, assetName, quantity, market } = validation.data;
 
     // Get current market price
-    const quote = await getMarketQuote(symbol, assetType);
+    const quote = await getMarketQuote(symbol, assetType, market);
 
     if (!quote) {
       return NextResponse.json(
@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
       .eq('symbol', symbol)
       .eq('asset_type', assetType)
+      .eq('market', market)
       .maybeSingle();
 
     if (holdingError || !holding) {
@@ -135,7 +136,8 @@ export async function POST(request: NextRequest) {
         })
         .eq('user_id', user.id)
         .eq('symbol', symbol)
-        .eq('asset_type', assetType);
+        .eq('asset_type', assetType)
+        .eq('market', market);
 
       if (portfolioError) {
         // Rollback balance update
@@ -159,7 +161,8 @@ export async function POST(request: NextRequest) {
         .delete()
         .eq('user_id', user.id)
         .eq('symbol', symbol)
-        .eq('asset_type', assetType);
+        .eq('asset_type', assetType)
+        .eq('market', market);
 
       if (deleteError) {
         // Rollback balance update
@@ -189,6 +192,7 @@ export async function POST(request: NextRequest) {
       price_per_unit: pricePerUnit,
       total_amount: subtotal,
       fee,
+      market,
     });
 
     if (transactionError) {

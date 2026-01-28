@@ -18,6 +18,7 @@ export type Json =
 
 export type AssetType = 'stock' | 'crypto' | 'etf';
 export type TransactionType = 'buy' | 'sell';
+export type Market = 'us' | 'europe' | 'colombia';
 
 export interface Database {
   public: {
@@ -90,6 +91,7 @@ export interface Database {
           quantity: number;
           average_buy_price: number;
           total_invested: number;
+          market: Market;
           created_at: string;
           updated_at: string;
         };
@@ -102,6 +104,7 @@ export interface Database {
           quantity: number;
           average_buy_price: number;
           total_invested: number;
+          market?: Market;
           created_at?: string;
           updated_at?: string;
         };
@@ -114,6 +117,7 @@ export interface Database {
           quantity?: number;
           average_buy_price?: number;
           total_invested?: number;
+          market?: Market;
           created_at?: string;
           updated_at?: string;
         };
@@ -130,6 +134,7 @@ export interface Database {
           price_per_unit: number;
           total_amount: number;
           fee: number;
+          market: Market;
           created_at: string;
         };
         Insert: {
@@ -143,6 +148,7 @@ export interface Database {
           price_per_unit: number;
           total_amount: number;
           fee?: number;
+          market?: Market;
           created_at?: string;
         };
         Update: {
@@ -156,6 +162,7 @@ export interface Database {
           price_per_unit?: number;
           total_amount?: number;
           fee?: number;
+          market?: Market;
           created_at?: string;
         };
       };
@@ -259,6 +266,7 @@ export interface Database {
     Enums: {
       asset_type: AssetType;
       transaction_type: TransactionType;
+      market: Market;
     };
   };
 }

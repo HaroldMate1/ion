@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getMarketQuote } from '@/lib/api/market-data';
-import type { AssetType } from '@/types';
+import type { AssetType, Market } from '@/types';
 
 const CACHE_TTL_MINUTES = {
   stock: 5,
@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const symbol = searchParams.get('symbol');
     const assetType = searchParams.get('type') as AssetType;
+    const market = (searchParams.get('market') || 'us') as Market;
 
     if (!symbol || !assetType) {
       return NextResponse.json(
@@ -30,6 +31,13 @@ export async function GET(request: NextRequest) {
     if (!['stock', 'etf', 'crypto'].includes(assetType)) {
       return NextResponse.json(
         { error: 'Invalid asset type' },
+        { status: 400 }
+      );
+    }
+
+    if (!['us', 'europe', 'colombia'].includes(market)) {
+      return NextResponse.json(
+        { error: 'Invalid market' },
         { status: 400 }
       );
     }
@@ -68,7 +76,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch fresh data from market APIs
-    const quote = await getMarketQuote(symbol, assetType);
+    const quote = await getMarketQuote(symbol, assetType, market);
 
     if (!quote) {
       return NextResponse.json(

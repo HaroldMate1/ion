@@ -2,7 +2,7 @@
  * Application Types
  */
 
-import type { AssetType, TransactionType } from './database.types';
+import type { AssetType, TransactionType, Market } from './database.types';
 
 // Portfolio types
 export interface Portfolio {
@@ -10,6 +10,7 @@ export interface Portfolio {
   symbol: string;
   asset_name: string;
   asset_type: AssetType;
+  market: Market;
   quantity: number;
   average_buy_price: number;
   total_invested: number;
@@ -25,6 +26,7 @@ export interface Transaction {
   symbol: string;
   asset_name: string;
   asset_type: AssetType;
+  market: Market;
   transaction_type: TransactionType;
   quantity: number;
   price_per_unit: number;
@@ -44,6 +46,7 @@ export interface Balance {
 export interface MarketQuote {
   symbol: string;
   asset_type: AssetType;
+  market?: Market;
   price: number;
   change_24h?: number;
   volume_24h?: number;
@@ -72,4 +75,4 @@ export interface HistoricalDataPoint {
   value: number;
 }
 
-export type { AssetType, TransactionType };
+export type { AssetType, TransactionType, Market };

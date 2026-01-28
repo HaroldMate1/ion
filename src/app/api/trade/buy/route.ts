@@ -34,10 +34,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { symbol, assetType, assetName, quantity } = validation.data;
+    const { symbol, assetType, assetName, quantity, market } = validation.data;
 
     // Get current market price
-    const quote = await getMarketQuote(symbol, assetType);
+    const quote = await getMarketQuote(symbol, assetType, market);
 
     if (!quote) {
       return NextResponse.json(
@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
       .eq('symbol', symbol)
       .eq('asset_type', assetType)
+      .eq('market', market)
       .maybeSingle();
 
     // Calculate new average buy price and total invested
@@ -134,9 +135,10 @@ export async function POST(request: NextRequest) {
         quantity: newQuantity,
         average_buy_price: newAverageBuyPrice,
         total_invested: newTotalInvested,
+        market,
       },
       {
-        onConflict: 'user_id,symbol,asset_type',
+        onConflict: 'user_id,symbol,asset_type,market',
       }
     );
 
@@ -167,6 +169,7 @@ export async function POST(request: NextRequest) {
       price_per_unit: pricePerUnit,
       total_amount: subtotal,
       fee,
+      market,
     });
 
     if (transactionError) {

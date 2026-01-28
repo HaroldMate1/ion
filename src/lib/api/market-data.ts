@@ -1,20 +1,26 @@
 /**
  * Unified Market Data API
- * Combines Finnhub (stocks/ETFs) and CoinGecko (crypto) with caching
+ * Routes requests to appropriate provider based on market:
+ * - US: Finnhub (stocks/ETFs) + CoinGecko (crypto)
+ * - Europe: Yahoo Finance
+ * - Colombia: Yahoo Finance
  */
 
-import type { AssetType, MarketQuote } from '@/types';
+import type { AssetType, Market, MarketQuote } from '@/types';
 import * as finnhub from './finnhub';
 import * as coinGecko from './coingecko';
+import * as yahooFinance from './yahoo-finance';
 
 /**
- * Get market quote for any asset type
+ * Get market quote for any asset type and market
  */
 export async function getMarketQuote(
   symbol: string,
-  assetType: AssetType
+  assetType: AssetType,
+  market: Market = 'us'
 ): Promise<MarketQuote | null> {
   try {
+    // Crypto is always handled by CoinGecko regardless of market
     if (assetType === 'crypto') {
       const quote = await coinGecko.getQuoteBySymbol(symbol);
       if (!quote) return null;
@@ -22,22 +28,40 @@ export async function getMarketQuote(
       return {
         symbol: quote.symbol,
         asset_type: 'crypto',
+        market: market,
         price: quote.price,
         change_24h: quote.change24h,
         volume_24h: quote.volume24h,
         market_cap: quote.marketCap,
       };
-    } else {
-      // Stock or ETF - using Finnhub
+    }
+
+    // For stocks/ETFs, route based on market
+    if (market === 'us') {
+      // US market - use Finnhub
       const quote = await finnhub.getQuote(symbol);
       if (!quote) return null;
 
       return {
         symbol: quote.symbol,
         asset_type: assetType,
+        market: 'us',
         price: quote.price,
         change_24h: quote.changePercent,
-        volume_24h: undefined, // Finnhub doesn't provide 24h volume in quote
+        volume_24h: undefined,
+      };
+    } else {
+      // Europe or Colombia - use Yahoo Finance
+      const quote = await yahooFinance.getQuote(symbol);
+      if (!quote) return null;
+
+      return {
+        symbol: quote.symbol,
+        asset_type: assetType,
+        market: market,
+        price: quote.price,
+        change_24h: quote.changePercent,
+        volume_24h: undefined,
       };
     }
   } catch (error) {
@@ -47,26 +71,42 @@ export async function getMarketQuote(
 }
 
 /**
- * Search for assets across all types
+ * Search for assets across all types within a specific market
  */
-export async function searchAssets(query: string) {
+export async function searchAssets(query: string, market: Market = 'us') {
   try {
-    const [stockResults, cryptoResults] = await Promise.all([
-      finnhub.searchSymbol(query),
-      coinGecko.searchCrypto(query),
-    ]);
-
-    const stocks = stockResults.map((result) => ({
-      symbol: result.symbol,
-      name: result.name,
-      asset_type: (result.type.toLowerCase().includes('etf') ? 'etf' : 'stock') as AssetType,
-    }));
-
+    // Crypto search is the same for all markets
+    const cryptoResults = await coinGecko.searchCrypto(query);
     const cryptos = cryptoResults.map((result) => ({
       symbol: result.symbol,
       name: result.name,
       asset_type: 'crypto' as AssetType,
+      market: market,
     }));
+
+    let stocks: Array<{ symbol: string; name: string; asset_type: AssetType; market: Market }> = [];
+
+    if (market === 'us') {
+      // US market - use Finnhub
+      const stockResults = await finnhub.searchSymbol(query);
+      stocks = stockResults.map((result) => ({
+        symbol: result.symbol,
+        name: result.name,
+        asset_type: (result.type.toLowerCase().includes('etf') ? 'etf' : 'stock') as AssetType,
+        market: 'us' as Market,
+      }));
+    } else {
+      // Europe or Colombia - use Yahoo Finance with filtering
+      const allResults = await yahooFinance.searchSymbol(query);
+      const filteredResults = yahooFinance.filterByMarket(allResults, market);
+
+      stocks = filteredResults.map((result) => ({
+        symbol: result.symbol,
+        name: result.name,
+        asset_type: (result.type.toLowerCase().includes('etf') ? 'etf' : 'stock') as AssetType,
+        market: market,
+      }));
+    }
 
     return {
       stocks,
@@ -85,7 +125,8 @@ export async function searchAssets(query: string) {
 export async function getHistoricalPrices(
   symbol: string,
   assetType: AssetType,
-  days: number = 30
+  days: number = 30,
+  market: Market = 'us'
 ) {
   try {
     if (assetType === 'crypto') {
@@ -98,12 +139,20 @@ export async function getHistoricalPrices(
       if (!coin) return null;
 
       return await coinGecko.getHistoricalData(coin.id, days);
-    } else {
-      // For stocks/ETFs - using Finnhub
+    } else if (market === 'us') {
+      // For US stocks/ETFs - using Finnhub
       const data = await finnhub.getHistoricalData(symbol, days);
       if (!data) return null;
 
-      // Convert to simplified format
+      return data.map((item) => ({
+        date: item.date,
+        price: item.close,
+      }));
+    } else {
+      // For Europe/Colombia - using Yahoo Finance
+      const data = await yahooFinance.getHistoricalData(symbol, days);
+      if (!data) return null;
+
       return data.map((item) => ({
         date: item.date,
         price: item.close,
