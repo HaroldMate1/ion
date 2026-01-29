@@ -359,15 +359,15 @@ function determineAction(
   let confidenceBoost = 0;
   if (metrics.isBreakingOut) confidenceBoost = 0.15;
 
-  if (absScore < 0.25) {
+  if (absScore < 0.12) {
     return { action: 'HOLD', confidence: 0.5 + absScore };
   }
 
   const confidence = Math.min(0.95, 0.5 + absScore * 0.45 + confidenceBoost);
 
-  if (compositeScore > 0.25) {
+  if (compositeScore > 0.12) {
     return { action: 'BUY', confidence };
-  } else if (compositeScore < -0.25) {
+  } else if (compositeScore < -0.12) {
     return { action: 'SELL', confidence };
   }
 

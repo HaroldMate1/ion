@@ -380,5 +380,5 @@ function createHoldConsensus(reason: string): ConsensusResult {
  * Quick check if consensus recommends action
  */
 export function isActionable(result: ConsensusResult): boolean {
-  return result.action !== 'HOLD' && result.confidence >= 0.6;
+  return result.action !== 'HOLD' && result.confidence >= 0.45;
 }

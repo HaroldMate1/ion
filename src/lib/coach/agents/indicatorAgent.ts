@@ -211,8 +211,8 @@ function determineAction(
 ): { action: 'BUY' | 'SELL' | 'HOLD'; confidence: number } {
   const absScore = Math.abs(compositeScore);
 
-  // Strong signal threshold
-  if (absScore < 0.3) {
+  // Signal threshold
+  if (absScore < 0.15) {
     return { action: 'HOLD', confidence: 0.5 + absScore };
   }
 
@@ -226,9 +226,9 @@ function determineAction(
   if (trendAlignment) confidence = Math.min(0.95, confidence + 0.1);
   if (!trendAlignment && trend !== 'neutral') confidence = Math.max(0.4, confidence - 0.15);
 
-  if (compositeScore > 0.3) {
+  if (compositeScore > 0.15) {
     return { action: 'BUY', confidence };
-  } else if (compositeScore < -0.3) {
+  } else if (compositeScore < -0.15) {
     return { action: 'SELL', confidence };
   }
 

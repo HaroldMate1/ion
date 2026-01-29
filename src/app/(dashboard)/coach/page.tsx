@@ -31,6 +31,7 @@ import {
   Settings,
   FileText,
   Briefcase,
+  ScrollText,
 } from 'lucide-react';
 
 export default function CoachPage() {
@@ -56,9 +57,15 @@ export default function CoachPage() {
         toast.success(`Generated ${result.signalsGenerated} signal(s)`);
       }
 
+      // Show auto-executed trades
+      if (result.autoExecutedTrades && result.autoExecutedTrades.length > 0) {
+        for (const trade of result.autoExecutedTrades) {
+          toast.success(`Auto-${trade.side}: ${trade.symbol} ($${trade.sizeUsd.toFixed(0)})`);
+        }
+      }
+
       if (result.errors && result.errors.length > 0) {
         console.error('Analysis errors:', result.errors);
-        // Show each error in a separate toast for visibility
         result.errors.forEach((err: string) => {
           toast.error(err);
         });
@@ -117,6 +124,12 @@ export default function CoachPage() {
             <Button variant="outline" size="sm">
               <Briefcase className="h-4 w-4 mr-2" />
               Paper Trades
+            </Button>
+          </Link>
+          <Link href="/coach/movements">
+            <Button variant="outline" size="sm">
+              <ScrollText className="h-4 w-4 mr-2" />
+              Movements
             </Button>
           </Link>
         </div>

@@ -117,6 +117,7 @@ export function useRunAnalysis() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coachKeys.signals() });
+      queryClient.invalidateQueries({ queryKey: coachKeys.trades() });
     },
   });
 }

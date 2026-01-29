@@ -131,12 +131,12 @@ export interface CoachConfig {
 export const DEFAULT_COACH_CONFIG: Omit<CoachConfig, 'userId'> = {
   killSwitch: false,
   weights: {
-    indicator: 0.40,
-    priceAction: 0.35,
-    news: 0.25,
+    indicator: 0.45,
+    priceAction: 0.45,
+    news: 0.10,
   },
-  minConfidence: 0.60,
-  minConsensusScore: 0.55,
+  minConfidence: 0.45,
+  minConsensusScore: 0.10,
   riskParams: {
     maxAllocationPct: 10.00,
     maxOpenPositions: 4,

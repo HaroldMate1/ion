@@ -152,31 +152,96 @@ export async function POST(request: NextRequest) {
       portfolioState
     );
 
-    // Save signals to database
+    // Save signals to database and auto-execute trades
+    const autoExecutedTrades: Array<{ symbol: string; side: string; sizeUsd: number }> = [];
+    let openPositionsCount = portfolioState.openPositions;
+
     for (const signal of result.signals) {
-      await (supabase.from('coach_signal') as any).insert({
-        user_id: user.id,
-        symbol: signal.symbol,
-        asset_type: signal.assetType,
-        market: signal.market,
-        timeframe: signal.timeframe,
-        signal_ts: signal.signalTs,
-        consensus_action: signal.consensusAction,
-        consensus_score: signal.consensusScore,
-        entry_low: signal.entryLow,
-        entry_high: signal.entryHigh,
-        stop_loss: signal.stopLoss,
-        take_profit_json: signal.takeProfitJson,
-        agent_votes_json: signal.agentVotesJson,
-        rationale: signal.rationale,
-        expected_return_pct: signal.expectedReturnPct,
-        expected_risk_pct: signal.expectedRiskPct,
-        risk_reward_ratio: signal.riskRewardRatio,
-        market_open: signal.marketOpen,
-        current_price: signal.currentPrice,
-        is_stale: signal.isStale,
-        acknowledged: false,
-      });
+      // Save signal and get its ID
+      const { data: savedSignal } = await (supabase.from('coach_signal') as any)
+        .insert({
+          user_id: user.id,
+          symbol: signal.symbol,
+          asset_type: signal.assetType,
+          market: signal.market,
+          timeframe: signal.timeframe,
+          signal_ts: signal.signalTs,
+          consensus_action: signal.consensusAction,
+          consensus_score: signal.consensusScore,
+          entry_low: signal.entryLow,
+          entry_high: signal.entryHigh,
+          stop_loss: signal.stopLoss,
+          take_profit_json: signal.takeProfitJson,
+          agent_votes_json: signal.agentVotesJson,
+          rationale: signal.rationale,
+          expected_return_pct: signal.expectedReturnPct,
+          expected_risk_pct: signal.expectedRiskPct,
+          risk_reward_ratio: signal.riskRewardRatio,
+          market_open: signal.marketOpen,
+          current_price: signal.currentPrice,
+          is_stale: signal.isStale,
+          acknowledged: false,
+        })
+        .select('id')
+        .single();
+
+      // Auto-execute BUY/SELL signals
+      if (signal.consensusAction !== 'HOLD' && signal.currentPrice && !signal.isStale) {
+        // Check max open positions
+        if (openPositionsCount >= config.riskParams.maxOpenPositions) {
+          continue;
+        }
+
+        // Check for duplicate open trade on same symbol
+        const { data: existingTrade } = await (supabase.from('coach_paper_trade') as any)
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('symbol', signal.symbol)
+          .eq('status', 'open')
+          .maybeSingle();
+
+        if (existingTrade) continue;
+
+        // Calculate position size
+        const maxAllocation = (portfolioState.totalValue * config.riskParams.maxAllocationPct) / 100;
+        const sizeUsd = Math.min(maxAllocation, portfolioState.availableCash);
+
+        if (sizeUsd < 10) continue;
+
+        const quantity = sizeUsd / signal.currentPrice;
+
+        // Create paper trade
+        await (supabase.from('coach_paper_trade') as any).insert({
+          user_id: user.id,
+          signal_id: savedSignal?.id || null,
+          symbol: signal.symbol,
+          asset_type: signal.assetType,
+          market: signal.market,
+          side: signal.consensusAction,
+          entry_price: signal.currentPrice,
+          size_usd: sizeUsd,
+          quantity,
+          stop_loss: signal.stopLoss,
+          take_profit_json: signal.takeProfitJson,
+          status: 'open',
+          opened_at: new Date().toISOString(),
+          notes: `Auto-executed by coach. Score: ${((signal.consensusScore || 0) * 100).toFixed(0)}%`,
+        });
+
+        // Mark signal as acknowledged
+        if (savedSignal?.id) {
+          await (supabase.from('coach_signal') as any)
+            .update({ acknowledged: true })
+            .eq('id', savedSignal.id);
+        }
+
+        openPositionsCount++;
+        autoExecutedTrades.push({
+          symbol: signal.symbol,
+          side: signal.consensusAction,
+          sizeUsd,
+        });
+      }
     }
 
     return NextResponse.json({
@@ -186,6 +251,7 @@ export async function POST(request: NextRequest) {
       errors: result.errors,
       killSwitchActive: result.killSwitchActive,
       circuitBreakerActive: result.circuitBreakerActive,
+      autoExecutedTrades,
     });
   } catch (error) {
     console.error('Coach analyze error:', error);
