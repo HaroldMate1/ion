@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { TrendingUp, LogOut, User, LayoutDashboard, ArrowLeftRight, History, Brain, Bot, Crown } from 'lucide-react';
+import { TrendingUp, LogOut, User, LayoutDashboard, ArrowLeftRight, History, Brain, Bot, Crown, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -95,6 +95,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 >
                   <Crown className="mr-2 h-4 w-4" />
                   Expert Investors
+                </Button>
+              </Link>
+              <Link href="/benchmarks">
+                <Button
+                  variant={pathname.startsWith('/benchmarks') ? 'default' : 'ghost'}
+                  size="sm"
+                >
+                  <BarChart3 className="mr-2 h-4 w-4" />
+                  Benchmarks
                 </Button>
               </Link>
             </nav>
