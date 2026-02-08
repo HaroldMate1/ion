@@ -35,18 +35,28 @@ import {
 
 const INVESTOR_COLORS: Record<InvestorSlug, string> = {
   buffett: 'bg-blue-600',
-  pelosi: 'bg-purple-600',
+  marks: 'bg-slate-600',
+  smith: 'bg-teal-600',
+  druckenmiller: 'bg-violet-600',
+  greenblatt: 'bg-indigo-600',
   dalio: 'bg-emerald-600',
-  wood: 'bg-pink-600',
+  hempton: 'bg-cyan-600',
+  asness: 'bg-rose-600',
   burry: 'bg-amber-600',
+  pabrai: 'bg-orange-600',
 };
 
-const INVESTOR_EMOJI: Record<InvestorSlug, string> = {
+const INVESTOR_INITIALS: Record<InvestorSlug, string> = {
   buffett: 'WB',
-  pelosi: 'NP',
+  marks: 'HM',
+  smith: 'TS',
+  druckenmiller: 'SD',
+  greenblatt: 'JG',
   dalio: 'RD',
-  wood: 'CW',
+  hempton: 'JH',
+  asness: 'CA',
   burry: 'MB',
+  pabrai: 'MP',
 };
 
 export default function ExpertInvestorsPage() {
@@ -98,7 +108,7 @@ export default function ExpertInvestorsPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
         {portfolios.map((portfolio) => (
           <Card
             key={portfolio.investorSlug}
@@ -110,7 +120,7 @@ export default function ExpertInvestorsPage() {
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 <div className={`w-8 h-8 rounded-full ${INVESTOR_COLORS[portfolio.investorSlug]} flex items-center justify-center text-white text-xs font-bold`}>
-                  {INVESTOR_EMOJI[portfolio.investorSlug]}
+                  {INVESTOR_INITIALS[portfolio.investorSlug]}
                 </div>
                 <div>
                   <CardTitle className="text-sm">{portfolio.displayName}</CardTitle>
@@ -141,14 +151,14 @@ export default function ExpertInvestorsPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as InvestorSlug)}>
-        <TabsList className="grid grid-cols-5 w-full">
+        <TabsList className="grid grid-cols-5 md:grid-cols-10 w-full">
           {INVESTOR_SLUGS.map((slug) => {
             const portfolio = portfolios.find(p => p.investorSlug === slug);
             return (
               <TabsTrigger key={slug} value={slug} className="flex items-center gap-1">
                 <div className={`w-2 h-2 rounded-full ${INVESTOR_COLORS[slug]}`} />
                 <span className="hidden sm:inline">{portfolio?.displayName || slug}</span>
-                <span className="sm:hidden">{INVESTOR_EMOJI[slug]}</span>
+                <span className="sm:hidden">{INVESTOR_INITIALS[slug]}</span>
                 {portfolio?.isInitialized && (
                   <Badge variant="secondary" className="ml-1 text-[10px] px-1">Live</Badge>
                 )}
@@ -200,7 +210,7 @@ function UninitializedCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <div className={`w-6 h-6 rounded-full ${INVESTOR_COLORS[slug]} flex items-center justify-center text-white text-xs font-bold`}>
-            {INVESTOR_EMOJI[slug]}
+            {INVESTOR_INITIALS[slug]}
           </div>
           {portfolio?.fullName}
         </CardTitle>
