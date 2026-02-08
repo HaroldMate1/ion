@@ -140,7 +140,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">{children}</main>
+      <main className="container mx-auto px-4 py-6 pb-24 md:pb-8">{children}</main>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t md:hidden z-50">
+        <div className="grid grid-cols-6 gap-0">
+          {[
+            { href: '/dashboard', icon: LayoutDashboard, label: 'Home' },
+            { href: '/trade', icon: ArrowLeftRight, label: 'Trade' },
+            { href: '/coach', icon: Brain, label: 'Coach' },
+            { href: '/llm-portfolios', icon: Bot, label: 'LLM' },
+            { href: '/expert-investors', icon: Crown, label: 'Experts' },
+            { href: '/benchmarks', icon: BarChart3, label: 'Bench' },
+          ].map(({ href, icon: Icon, label }) => {
+            const isActive = href === '/dashboard'
+              ? pathname === '/dashboard'
+              : pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`flex flex-col items-center py-2 text-xs ${
+                  isActive
+                    ? 'text-primary font-medium'
+                    : 'text-muted-foreground'
+                }`}
+              >
+                <Icon className="h-5 w-5 mb-0.5" />
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }
