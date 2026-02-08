@@ -23,6 +23,7 @@ import {
   Plus,
   X,
   AlertTriangle,
+  Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -41,6 +42,7 @@ export default function CoachSettingsPage() {
   });
   const [minConfidence, setMinConfidence] = useState(0.6);
   const [minConsensusScore, setMinConsensusScore] = useState(0.55);
+  const [runCadenceMinutes, setRunCadenceMinutes] = useState(0);
   const [riskParams, setRiskParams] = useState({
     maxAllocationPct: 10,
     maxOpenPositions: 4,
@@ -58,6 +60,7 @@ export default function CoachSettingsPage() {
       setWeights(config.weights);
       setMinConfidence(config.minConfidence);
       setMinConsensusScore(config.minConsensusScore);
+      setRunCadenceMinutes(config.runCadenceMinutes || 0);
       setRiskParams({
         maxAllocationPct: config.riskParams.maxAllocationPct,
         maxOpenPositions: config.riskParams.maxOpenPositions,
@@ -90,6 +93,7 @@ export default function CoachSettingsPage() {
         weights,
         minConfidence,
         minConsensusScore,
+        runCadenceMinutes,
         riskParams: {
           useLeverage: config?.riskParams?.useLeverage ?? false,
           stopLossAtrMultiplier: config?.riskParams?.stopLossAtrMultiplier ?? 1.5,
@@ -165,6 +169,37 @@ export default function CoachSettingsPage() {
               </p>
             </div>
             <Switch checked={killSwitch} onCheckedChange={setKillSwitch} />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Autonomous Mode */}
+      <Card className={runCadenceMinutes > 0 ? 'border-emerald-500' : ''}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className={runCadenceMinutes > 0 ? 'text-emerald-500' : ''} />
+            Autonomous Mode
+          </CardTitle>
+          <CardDescription>
+            Enable the coach to automatically analyze your watchlist, open trades, and close positions at stop loss / take profit — daily during market hours
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">
+                {runCadenceMinutes > 0 ? 'Autonomous Mode Active' : 'Autonomous Mode Disabled'}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {runCadenceMinutes > 0
+                  ? `Coach will run automatically every day at 2 PM UTC (weekdays)`
+                  : 'Coach only runs when you manually trigger analysis'}
+              </p>
+            </div>
+            <Switch
+              checked={runCadenceMinutes > 0}
+              onCheckedChange={(checked) => setRunCadenceMinutes(checked ? 15 : 0)}
+            />
           </div>
         </CardContent>
       </Card>
