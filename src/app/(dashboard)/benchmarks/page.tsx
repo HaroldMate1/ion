@@ -278,7 +278,7 @@ function InitializedView({ portfolio, bench }: { portfolio: any; bench: any }) {
               ${holding.currentPrice?.toFixed(2) || '---'}
             </div>
             <p className="text-xs text-muted-foreground">
-              Bought at ${holding.averageBuyPrice.toFixed(2)}
+              Bought at ${holding.averageBuyPrice?.toFixed(2) || '---'}
             </p>
           </CardContent>
         </Card>
@@ -312,7 +312,7 @@ function InitializedView({ portfolio, bench }: { portfolio: any; bench: any }) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{holding.quantity.toFixed(4)}</div>
+            <div className="text-2xl font-bold">{holding.quantity?.toFixed(4) || '0'}</div>
             <p className="text-xs text-muted-foreground">{bench.etfSymbol}</p>
           </CardContent>
         </Card>

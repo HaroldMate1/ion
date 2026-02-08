@@ -69,15 +69,16 @@ export async function GET() {
           const totalReturnPct = ((totalValue - INITIAL_BENCHMARK_BALANCE) / INITIAL_BENCHMARK_BALANCE) * 100;
 
           return {
+            ...bench,
             ...found,
             totalValue,
             totalReturnPct,
             holdings: enrichedHoldings,
-            ...bench,
           };
         }
 
         return {
+          ...bench,
           id: null,
           userId: user.id,
           benchmarkSlug: slug,
@@ -88,7 +89,6 @@ export async function GET() {
           holdings: [],
           createdAt: null,
           updatedAt: null,
-          ...bench,
         };
       })
     );
