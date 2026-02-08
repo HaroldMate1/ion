@@ -1,6 +1,7 @@
 /**
  * Benchmark Index Configuration
- * S&P 500 and NASDAQ 100 with top individual stock holdings
+ * S&P 500 (SPY) and NASDAQ 100 (QQQ)
+ * Each ETF holds ALL stocks in the index proportionally
  */
 
 export type BenchmarkSlug = 'sp500' | 'nasdaq100';
@@ -9,87 +10,61 @@ export interface BenchmarkHoldingItem {
   symbol: string;
   name: string;
   allocationPct: number;
+  type: 'etf';
 }
 
 export interface BenchmarkIndex {
   slug: BenchmarkSlug;
   displayName: string;
   fullName: string;
+  etfSymbol: string;
   description: string;
   color: string;
   totalStocks: number;
+  expenseRatio: string;
   holdings: BenchmarkHoldingItem[];
+  topComponents: string[];
 }
 
-/**
- * S&P 500 - Top 20 holdings by weight
- * Based on current index composition (~55% coverage of total index)
- */
 const sp500: BenchmarkIndex = {
   slug: 'sp500',
   displayName: 'S&P 500',
   fullName: 'S&P 500 Index',
-  description: 'Tracks the 500 largest US companies by market cap. The most widely followed benchmark for US stock market performance.',
+  etfSymbol: 'SPY',
+  description: 'The SPDR S&P 500 ETF (SPY) holds all 500 largest US companies by market cap. Each share gives you proportional ownership of every stock in the index.',
   color: 'bg-blue-600',
   totalStocks: 500,
+  expenseRatio: '0.09%',
   holdings: [
-    { symbol: 'AAPL', name: 'Apple Inc.', allocationPct: 7.0 },
-    { symbol: 'MSFT', name: 'Microsoft Corp.', allocationPct: 6.5 },
-    { symbol: 'NVDA', name: 'NVIDIA Corp.', allocationPct: 6.0 },
-    { symbol: 'AMZN', name: 'Amazon.com Inc.', allocationPct: 4.0 },
-    { symbol: 'GOOGL', name: 'Alphabet Inc. Class A', allocationPct: 2.2 },
-    { symbol: 'META', name: 'Meta Platforms Inc.', allocationPct: 2.5 },
-    { symbol: 'GOOG', name: 'Alphabet Inc. Class C', allocationPct: 1.8 },
-    { symbol: 'BRK-B', name: 'Berkshire Hathaway Class B', allocationPct: 1.8 },
-    { symbol: 'TSLA', name: 'Tesla Inc.', allocationPct: 1.8 },
-    { symbol: 'AVGO', name: 'Broadcom Inc.', allocationPct: 1.7 },
-    { symbol: 'JPM', name: 'JPMorgan Chase & Co.', allocationPct: 1.4 },
-    { symbol: 'LLY', name: 'Eli Lilly & Co.', allocationPct: 1.4 },
-    { symbol: 'UNH', name: 'UnitedHealth Group', allocationPct: 1.2 },
-    { symbol: 'V', name: 'Visa Inc.', allocationPct: 1.1 },
-    { symbol: 'XOM', name: 'Exxon Mobil Corp.', allocationPct: 1.1 },
-    { symbol: 'MA', name: 'Mastercard Inc.', allocationPct: 1.0 },
-    { symbol: 'COST', name: 'Costco Wholesale', allocationPct: 0.9 },
-    { symbol: 'HD', name: 'Home Depot Inc.', allocationPct: 0.9 },
-    { symbol: 'PG', name: 'Procter & Gamble Co.', allocationPct: 0.9 },
-    { symbol: 'JNJ', name: 'Johnson & Johnson', allocationPct: 0.8 },
-    // Remaining ~54% spread across 480 other stocks - modeled as rest in cash
+    { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', allocationPct: 100, type: 'etf' },
+  ],
+  topComponents: [
+    'AAPL (7.0%)', 'MSFT (6.5%)', 'NVDA (6.0%)', 'AMZN (4.0%)', 'META (2.5%)',
+    'GOOGL (2.2%)', 'BRK-B (1.8%)', 'TSLA (1.8%)', 'AVGO (1.7%)', 'JPM (1.4%)',
+    'LLY (1.4%)', 'UNH (1.2%)', 'V (1.1%)', 'XOM (1.1%)', 'MA (1.0%)',
+    'COST (0.9%)', 'HD (0.9%)', 'PG (0.9%)', 'JNJ (0.8%)', 'ABBV (0.8%)',
+    '+ 480 more stocks',
   ],
 };
 
-/**
- * NASDAQ 100 - Top 20 holdings by weight
- * Based on current index composition (~65% coverage of total index)
- */
 const nasdaq100: BenchmarkIndex = {
   slug: 'nasdaq100',
   displayName: 'NASDAQ 100',
   fullName: 'NASDAQ 100 Index',
-  description: 'Tracks the 100 largest non-financial companies on the NASDAQ. Heavily weighted toward technology, with significant exposure to AI and cloud computing.',
+  etfSymbol: 'QQQ',
+  description: 'The Invesco QQQ Trust (QQQ) holds all 100 largest non-financial NASDAQ companies. Heavy tech weighting with exposure to AI, cloud, and semiconductor leaders.',
   color: 'bg-green-600',
   totalStocks: 100,
+  expenseRatio: '0.20%',
   holdings: [
-    { symbol: 'AAPL', name: 'Apple Inc.', allocationPct: 9.0 },
-    { symbol: 'MSFT', name: 'Microsoft Corp.', allocationPct: 8.0 },
-    { symbol: 'NVDA', name: 'NVIDIA Corp.', allocationPct: 7.5 },
-    { symbol: 'AMZN', name: 'Amazon.com Inc.', allocationPct: 5.5 },
-    { symbol: 'META', name: 'Meta Platforms Inc.', allocationPct: 3.5 },
-    { symbol: 'GOOGL', name: 'Alphabet Inc. Class A', allocationPct: 3.0 },
-    { symbol: 'AVGO', name: 'Broadcom Inc.', allocationPct: 3.0 },
-    { symbol: 'GOOG', name: 'Alphabet Inc. Class C', allocationPct: 2.8 },
-    { symbol: 'TSLA', name: 'Tesla Inc.', allocationPct: 2.8 },
-    { symbol: 'COST', name: 'Costco Wholesale', allocationPct: 2.5 },
-    { symbol: 'NFLX', name: 'Netflix Inc.', allocationPct: 2.0 },
-    { symbol: 'AMD', name: 'Advanced Micro Devices', allocationPct: 1.8 },
-    { symbol: 'ADBE', name: 'Adobe Inc.', allocationPct: 1.6 },
-    { symbol: 'LIN', name: 'Linde plc', allocationPct: 1.5 },
-    { symbol: 'PEP', name: 'PepsiCo Inc.', allocationPct: 1.4 },
-    { symbol: 'CSCO', name: 'Cisco Systems Inc.', allocationPct: 1.3 },
-    { symbol: 'QCOM', name: 'Qualcomm Inc.', allocationPct: 1.2 },
-    { symbol: 'INTU', name: 'Intuit Inc.', allocationPct: 1.2 },
-    { symbol: 'ISRG', name: 'Intuitive Surgical', allocationPct: 1.1 },
-    { symbol: 'AMAT', name: 'Applied Materials Inc.', allocationPct: 1.0 },
-    // Remaining ~38% spread across 80 other stocks - modeled as rest in cash
+    { symbol: 'QQQ', name: 'Invesco QQQ Trust (NASDAQ 100)', allocationPct: 100, type: 'etf' },
+  ],
+  topComponents: [
+    'AAPL (9.0%)', 'MSFT (8.0%)', 'NVDA (7.5%)', 'AMZN (5.5%)', 'META (3.5%)',
+    'GOOGL (3.0%)', 'AVGO (3.0%)', 'GOOG (2.8%)', 'TSLA (2.8%)', 'COST (2.5%)',
+    'NFLX (2.0%)', 'AMD (1.8%)', 'ADBE (1.6%)', 'LIN (1.5%)', 'PEP (1.4%)',
+    'CSCO (1.3%)', 'QCOM (1.2%)', 'INTU (1.2%)', 'ISRG (1.1%)', 'AMAT (1.0%)',
+    '+ 80 more stocks',
   ],
 };
 

@@ -1,7 +1,7 @@
 /**
  * Benchmark Portfolios API Route
  * GET - List all benchmark portfolios
- * POST - Initialize a benchmark portfolio with individual stock holdings
+ * POST - Initialize a benchmark portfolio (buy SPY or QQQ with full $100k)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -33,27 +33,65 @@ export async function GET() {
 
     const existing = (rows || []).map(transformRow);
 
-    const portfolios = BENCHMARK_SLUGS.map((slug) => {
-      const bench = BENCHMARKS[slug];
-      const found = existing.find((p: any) => p.benchmarkSlug === slug);
+    const portfolios = await Promise.all(
+      BENCHMARK_SLUGS.map(async (slug) => {
+        const bench = BENCHMARKS[slug];
+        const found = existing.find((p: any) => p.benchmarkSlug === slug);
 
-      if (found) {
-        return { ...found, ...bench };
-      }
+        if (found && found.isInitialized) {
+          // Get holdings with live prices
+          const { data: holdingRows } = await (supabase
+            .from('benchmark_holding') as any)
+            .select('*')
+            .eq('portfolio_id', found.id);
 
-      return {
-        id: null,
-        userId: user.id,
-        benchmarkSlug: slug,
-        isInitialized: false,
-        totalValue: INITIAL_BENCHMARK_BALANCE,
-        cashBalance: INITIAL_BENCHMARK_BALANCE,
-        totalReturnPct: 0,
-        createdAt: null,
-        updatedAt: null,
-        ...bench,
-      };
-    });
+          let totalValue = found.cashBalance;
+          const enrichedHoldings = [];
+
+          for (const row of (holdingRows || [])) {
+            const holding = transformHolding(row);
+            const quote = await getMarketQuote(holding.symbol, 'etf', 'us');
+            const currentPrice = quote?.price || null;
+            const currentValue = currentPrice ? holding.quantity * currentPrice : holding.totalInvested;
+            const unrealizedPnL = currentValue - holding.totalInvested;
+            const unrealizedPnLPct = holding.totalInvested > 0 ? (unrealizedPnL / holding.totalInvested) * 100 : 0;
+
+            totalValue += currentValue;
+            enrichedHoldings.push({
+              ...holding,
+              currentPrice,
+              currentValue,
+              unrealizedPnL,
+              unrealizedPnLPct,
+            });
+          }
+
+          const totalReturnPct = ((totalValue - INITIAL_BENCHMARK_BALANCE) / INITIAL_BENCHMARK_BALANCE) * 100;
+
+          return {
+            ...found,
+            totalValue,
+            totalReturnPct,
+            holdings: enrichedHoldings,
+            ...bench,
+          };
+        }
+
+        return {
+          id: null,
+          userId: user.id,
+          benchmarkSlug: slug,
+          isInitialized: false,
+          totalValue: INITIAL_BENCHMARK_BALANCE,
+          cashBalance: INITIAL_BENCHMARK_BALANCE,
+          totalReturnPct: 0,
+          holdings: [],
+          createdAt: null,
+          updatedAt: null,
+          ...bench,
+        };
+      })
+    );
 
     return NextResponse.json({ portfolios });
   } catch (error) {
@@ -87,8 +125,17 @@ export async function POST(request: NextRequest) {
     }
 
     const bench = BENCHMARKS[benchmarkSlug];
-    const errors: string[] = [];
-    let holdingsCreated = 0;
+    const etf = bench.holdings[0]; // Single ETF holding
+
+    // Get ETF price
+    const quote = await getMarketQuote(etf.symbol, 'etf', 'us');
+    if (!quote?.price) {
+      return NextResponse.json({ error: `Could not get price for ${etf.symbol}` }, { status: 500 });
+    }
+
+    const quantity = INITIAL_BENCHMARK_BALANCE / quote.price;
+    const totalInvested = quantity * quote.price;
+    const cashBalance = INITIAL_BENCHMARK_BALANCE - totalInvested;
 
     // Create portfolio
     const { data: portfolio, error: insertError } = await (supabase
@@ -96,9 +143,9 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: user.id,
         benchmark_slug: benchmarkSlug,
-        is_initialized: false,
+        is_initialized: true,
         total_value: INITIAL_BENCHMARK_BALANCE,
-        cash_balance: INITIAL_BENCHMARK_BALANCE,
+        cash_balance: cashBalance,
         total_return_pct: 0,
       })
       .select()
@@ -109,70 +156,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create portfolio' }, { status: 500 });
     }
 
-    let remainingCash = INITIAL_BENCHMARK_BALANCE;
+    // Create single holding (the ETF)
+    await (supabase.from('benchmark_holding') as any).insert({
+      portfolio_id: portfolio.id,
+      symbol: etf.symbol,
+      asset_name: etf.name,
+      asset_type: 'etf',
+      target_allocation_pct: 100,
+      quantity,
+      average_buy_price: quote.price,
+      total_invested: totalInvested,
+    });
 
-    // Buy each holding based on allocation
-    for (const item of bench.holdings) {
-      try {
-        const targetAmount = (INITIAL_BENCHMARK_BALANCE * item.allocationPct) / 100;
-
-        const quote = await getMarketQuote(item.symbol, 'stock', 'us');
-        const currentPrice = quote?.price || null;
-
-        if (!currentPrice) {
-          errors.push(`Could not get price for ${item.symbol}`);
-          continue;
-        }
-
-        const quantity = targetAmount / currentPrice;
-        const actualInvested = quantity * currentPrice;
-
-        // Create holding
-        const { error: holdingError } = await (supabase
-          .from('benchmark_holding') as any)
-          .insert({
-            portfolio_id: portfolio.id,
-            symbol: item.symbol,
-            asset_name: item.name,
-            asset_type: 'stock',
-            target_allocation_pct: item.allocationPct,
-            quantity,
-            average_buy_price: currentPrice,
-            total_invested: actualInvested,
-          });
-
-        if (holdingError) {
-          errors.push(`Failed to create holding for ${item.symbol}`);
-          continue;
-        }
-        holdingsCreated++;
-
-        // Create transaction
-        await (supabase.from('benchmark_transaction') as any).insert({
-          portfolio_id: portfolio.id,
-          symbol: item.symbol,
-          transaction_type: 'buy',
-          quantity,
-          price_per_unit: currentPrice,
-          total_amount: actualInvested,
-          notes: `${bench.displayName} allocation: ${item.allocationPct}%`,
-        });
-
-        remainingCash -= actualInvested;
-      } catch (err) {
-        errors.push(`Error processing ${item.symbol}: ${err}`);
-      }
-    }
-
-    // Update portfolio
-    await (supabase.from('benchmark_portfolio') as any)
-      .update({
-        is_initialized: true,
-        cash_balance: remainingCash,
-        total_value: INITIAL_BENCHMARK_BALANCE,
-        total_return_pct: 0,
-      })
-      .eq('id', portfolio.id);
+    // Create transaction
+    await (supabase.from('benchmark_transaction') as any).insert({
+      portfolio_id: portfolio.id,
+      symbol: etf.symbol,
+      transaction_type: 'buy',
+      quantity,
+      price_per_unit: quote.price,
+      total_amount: totalInvested,
+      notes: `Full $100k into ${etf.symbol} (${bench.displayName} - all ${bench.totalStocks} stocks)`,
+    });
 
     // Initial snapshot
     await (supabase.from('benchmark_snapshot') as any).insert({
@@ -185,8 +190,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       portfolio: { ...transformRow(portfolio), ...bench },
-      holdingsCreated,
-      errors: errors.length > 0 ? errors : undefined,
+      currentPrice: quote.price,
+      sharesOwned: quantity,
     });
   } catch (error) {
     console.error('Benchmark portfolio POST error:', error);
@@ -205,5 +210,18 @@ function transformRow(row: any) {
     totalReturnPct: parseFloat(row.total_return_pct),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function transformHolding(row: any) {
+  return {
+    id: row.id,
+    symbol: row.symbol,
+    assetName: row.asset_name,
+    assetType: row.asset_type,
+    targetAllocationPct: parseFloat(row.target_allocation_pct),
+    quantity: parseFloat(row.quantity),
+    averageBuyPrice: parseFloat(row.average_buy_price),
+    totalInvested: parseFloat(row.total_invested),
   };
 }
