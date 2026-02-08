@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useCoachConfig, useUpdateCoachConfig } from '@/hooks/use-coach';
+import { DEFAULT_WATCHLIST } from '@/lib/coach/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -83,6 +84,12 @@ export default function CoachSettingsPage() {
 
   const handleRemoveSymbol = (symbol: string) => {
     setWatchSymbols(watchSymbols.filter((s) => s !== symbol));
+  };
+
+  const handleLoadDefaults = () => {
+    const merged = [...new Set([...watchSymbols, ...DEFAULT_WATCHLIST])];
+    setWatchSymbols(merged);
+    toast.success(`Added ${merged.length - watchSymbols.length} symbols from defaults`);
   };
 
   const handleSave = async () => {
@@ -223,6 +230,9 @@ export default function CoachSettingsPage() {
             />
             <Button onClick={handleAddSymbol}>
               <Plus className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" onClick={handleLoadDefaults}>
+              Load Top 30 + Crypto
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
