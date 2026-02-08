@@ -8,6 +8,7 @@ import type { BenchmarkSlug } from '@/config/benchmark-indexes';
 export const benchmarkKeys = {
   all: ['benchmarks'] as const,
   list: () => [...benchmarkKeys.all, 'list'] as const,
+  detail: (id: string) => [...benchmarkKeys.all, 'detail', id] as const,
 };
 
 export function useBenchmarkPortfolios() {
@@ -18,7 +19,24 @@ export function useBenchmarkPortfolios() {
       if (!response.ok) throw new Error('Failed to fetch benchmarks');
       return response.json();
     },
-    refetchInterval: 60000, // Live price updates every 60s
+  });
+}
+
+/**
+ * Fetch a single benchmark portfolio with enriched holdings
+ * Refetches every 60 seconds for live price updates
+ */
+export function useBenchmarkPortfolio(id: string | null) {
+  return useQuery({
+    queryKey: benchmarkKeys.detail(id || ''),
+    queryFn: async () => {
+      if (!id) throw new Error('Portfolio ID required');
+      const response = await fetch(`/api/benchmark/portfolios/${id}`);
+      if (!response.ok) throw new Error('Failed to fetch benchmark portfolio');
+      return response.json();
+    },
+    enabled: !!id,
+    refetchInterval: 60000,
   });
 }
 

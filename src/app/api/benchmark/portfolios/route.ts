@@ -1,7 +1,7 @@
 /**
  * Benchmark Portfolios API Route
  * GET - List all benchmark portfolios
- * POST - Initialize a benchmark portfolio (buy SPY or QQQ with $100k)
+ * POST - Initialize a benchmark portfolio with individual stock holdings
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -33,48 +33,27 @@ export async function GET() {
 
     const existing = (rows || []).map(transformRow);
 
-    // Enrich with current prices for initialized portfolios
-    const portfolios = await Promise.all(
-      BENCHMARK_SLUGS.map(async (slug) => {
-        const bench = BENCHMARKS[slug];
-        const found = existing.find((p: any) => p.benchmarkSlug === slug);
+    const portfolios = BENCHMARK_SLUGS.map((slug) => {
+      const bench = BENCHMARKS[slug];
+      const found = existing.find((p: any) => p.benchmarkSlug === slug);
 
-        if (found && found.isInitialized) {
-          // Get current price to calculate live value
-          const quote = await getMarketQuote(bench.symbol, 'etf', 'us');
-          const currentPrice = quote?.price || null;
-          const currentValue = currentPrice
-            ? found.quantity * currentPrice + found.cashBalance
-            : found.totalValue;
-          const totalReturnPct = ((currentValue - INITIAL_BENCHMARK_BALANCE) / INITIAL_BENCHMARK_BALANCE) * 100;
+      if (found) {
+        return { ...found, ...bench };
+      }
 
-          return {
-            ...found,
-            totalValue: currentValue,
-            totalReturnPct,
-            currentPrice,
-            ...bench,
-          };
-        }
-
-        return {
-          id: null,
-          userId: user.id,
-          benchmarkSlug: slug,
-          isInitialized: false,
-          totalValue: INITIAL_BENCHMARK_BALANCE,
-          cashBalance: INITIAL_BENCHMARK_BALANCE,
-          totalReturnPct: 0,
-          quantity: 0,
-          averageBuyPrice: 0,
-          totalInvested: 0,
-          currentPrice: null,
-          createdAt: null,
-          updatedAt: null,
-          ...bench,
-        };
-      })
-    );
+      return {
+        id: null,
+        userId: user.id,
+        benchmarkSlug: slug,
+        isInitialized: false,
+        totalValue: INITIAL_BENCHMARK_BALANCE,
+        cashBalance: INITIAL_BENCHMARK_BALANCE,
+        totalReturnPct: 0,
+        createdAt: null,
+        updatedAt: null,
+        ...bench,
+      };
+    });
 
     return NextResponse.json({ portfolios });
   } catch (error) {
@@ -108,29 +87,19 @@ export async function POST(request: NextRequest) {
     }
 
     const bench = BENCHMARKS[benchmarkSlug];
+    const errors: string[] = [];
+    let holdingsCreated = 0;
 
-    // Get current price of the ETF
-    const quote = await getMarketQuote(bench.symbol, 'etf', 'us');
-    if (!quote?.price) {
-      return NextResponse.json({ error: `Could not get price for ${bench.symbol}` }, { status: 500 });
-    }
-
-    const quantity = INITIAL_BENCHMARK_BALANCE / quote.price;
-    const totalInvested = quantity * quote.price;
-    const cashBalance = INITIAL_BENCHMARK_BALANCE - totalInvested;
-
+    // Create portfolio
     const { data: portfolio, error: insertError } = await (supabase
       .from('benchmark_portfolio') as any)
       .insert({
         user_id: user.id,
         benchmark_slug: benchmarkSlug,
-        is_initialized: true,
+        is_initialized: false,
         total_value: INITIAL_BENCHMARK_BALANCE,
-        cash_balance: cashBalance,
+        cash_balance: INITIAL_BENCHMARK_BALANCE,
         total_return_pct: 0,
-        quantity,
-        average_buy_price: quote.price,
-        total_invested: totalInvested,
       })
       .select()
       .single();
@@ -140,7 +109,72 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create portfolio' }, { status: 500 });
     }
 
-    // Create initial snapshot
+    let remainingCash = INITIAL_BENCHMARK_BALANCE;
+
+    // Buy each holding based on allocation
+    for (const item of bench.holdings) {
+      try {
+        const targetAmount = (INITIAL_BENCHMARK_BALANCE * item.allocationPct) / 100;
+
+        const quote = await getMarketQuote(item.symbol, 'stock', 'us');
+        const currentPrice = quote?.price || null;
+
+        if (!currentPrice) {
+          errors.push(`Could not get price for ${item.symbol}`);
+          continue;
+        }
+
+        const quantity = targetAmount / currentPrice;
+        const actualInvested = quantity * currentPrice;
+
+        // Create holding
+        const { error: holdingError } = await (supabase
+          .from('benchmark_holding') as any)
+          .insert({
+            portfolio_id: portfolio.id,
+            symbol: item.symbol,
+            asset_name: item.name,
+            asset_type: 'stock',
+            target_allocation_pct: item.allocationPct,
+            quantity,
+            average_buy_price: currentPrice,
+            total_invested: actualInvested,
+          });
+
+        if (holdingError) {
+          errors.push(`Failed to create holding for ${item.symbol}`);
+          continue;
+        }
+        holdingsCreated++;
+
+        // Create transaction
+        await (supabase.from('benchmark_transaction') as any).insert({
+          portfolio_id: portfolio.id,
+          symbol: item.symbol,
+          transaction_type: 'buy',
+          quantity,
+          price_per_unit: currentPrice,
+          total_amount: actualInvested,
+          notes: `${bench.displayName} allocation: ${item.allocationPct}%`,
+        });
+
+        remainingCash -= actualInvested;
+      } catch (err) {
+        errors.push(`Error processing ${item.symbol}: ${err}`);
+      }
+    }
+
+    // Update portfolio
+    await (supabase.from('benchmark_portfolio') as any)
+      .update({
+        is_initialized: true,
+        cash_balance: remainingCash,
+        total_value: INITIAL_BENCHMARK_BALANCE,
+        total_return_pct: 0,
+      })
+      .eq('id', portfolio.id);
+
+    // Initial snapshot
     await (supabase.from('benchmark_snapshot') as any).insert({
       portfolio_id: portfolio.id,
       total_value: INITIAL_BENCHMARK_BALANCE,
@@ -150,11 +184,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      portfolio: {
-        ...transformRow(portfolio),
-        currentPrice: quote.price,
-        ...bench,
-      },
+      portfolio: { ...transformRow(portfolio), ...bench },
+      holdingsCreated,
+      errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {
     console.error('Benchmark portfolio POST error:', error);
@@ -171,9 +203,6 @@ function transformRow(row: any) {
     totalValue: parseFloat(row.total_value),
     cashBalance: parseFloat(row.cash_balance),
     totalReturnPct: parseFloat(row.total_return_pct),
-    quantity: parseFloat(row.quantity),
-    averageBuyPrice: parseFloat(row.average_buy_price),
-    totalInvested: parseFloat(row.total_invested),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
