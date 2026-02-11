@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   useCoachSummary,
+  useCoachBalance,
   useCoachSignals,
   useRunAnalysis,
   useToggleKillSwitch,
@@ -32,11 +33,14 @@ import {
   FileText,
   Briefcase,
   ScrollText,
+  DollarSign,
+  Wallet,
 } from 'lucide-react';
 
 export default function CoachPage() {
   const { isLoading, config, unacknowledgedSignals, actionableSignals, openTrades, unrealizedPnL, killSwitchActive } =
     useCoachSummary();
+  const { data: balance } = useCoachBalance();
   const { data: signalsData, isLoading: signalsLoading } = useCoachSignals({ limit: 10 });
   const runAnalysis = useRunAnalysis();
   const toggleKillSwitch = useToggleKillSwitch();
@@ -159,30 +163,61 @@ export default function CoachPage() {
         </div>
       )}
 
+      {/* Portfolio Balance Card */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Paper Portfolio Value</p>
+              <div className="flex items-baseline gap-3">
+                <span className="text-3xl md:text-4xl font-bold">
+                  ${(balance?.totalValue ?? 100000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                {balance && (
+                  <span className={`text-lg font-medium ${balance.totalReturnPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {balance.totalReturnPct >= 0 ? '+' : ''}{balance.totalReturnPct.toFixed(2)}%
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Started with $100,000 paper balance
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-xs text-muted-foreground">Available Cash</p>
+                <p className="text-lg font-semibold">
+                  ${(balance?.availableCash ?? 100000).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">In Trades</p>
+                <p className="text-lg font-semibold">
+                  ${(balance?.capitalInUse ?? 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Today P&L</p>
+                <p className={`text-lg font-semibold ${(balance?.todayPnL ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {(balance?.todayPnL ?? 0) >= 0 ? '+' : ''}${(balance?.todayPnL ?? 0).toFixed(2)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Summary Cards */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Recent Signals</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{actionableSignals}</div>
-            <p className="text-xs text-muted-foreground">
-              Auto-executed by coach
-            </p>
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Open Trades</CardTitle>
             <Briefcase className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{openTrades}</div>
+            <div className="text-2xl font-bold">{balance?.openPositions ?? openTrades}</div>
             <p className="text-xs text-muted-foreground">
-              No limit — fully autonomous
+              Fully autonomous
             </p>
           </CardContent>
         </Card>
@@ -202,15 +237,28 @@ export default function CoachPage() {
                 unrealizedPnL >= 0 ? 'text-green-500' : 'text-red-500'
               }`}
             >
-              ${unrealizedPnL.toFixed(2)}
+              {unrealizedPnL >= 0 ? '+' : ''}${unrealizedPnL.toFixed(2)}
             </div>
-            <p className="text-xs text-muted-foreground">Paper trades</p>
+            <p className="text-xs text-muted-foreground">Live from open trades</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Watch Symbols</CardTitle>
+            <CardTitle className="text-sm font-medium">Signals</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{actionableSignals}</div>
+            <p className="text-xs text-muted-foreground">
+              Auto-executed
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Watch Universe</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -218,7 +266,7 @@ export default function CoachPage() {
               {config?.watchSymbols?.length || 0}
             </div>
             <p className="text-xs text-muted-foreground">
-              {config?.watchSymbols?.slice(0, 3).join(', ') || 'None configured'}
+              Auto-discover enabled
             </p>
           </CardContent>
         </Card>

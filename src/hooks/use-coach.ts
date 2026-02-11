@@ -357,6 +357,34 @@ export function useGenerateReport() {
 }
 
 // ============================================================================
+// Balance Hooks
+// ============================================================================
+
+interface CoachBalance {
+  initialBalance: number;
+  totalValue: number;
+  availableCash: number;
+  capitalInUse: number;
+  totalReturnPct: number;
+  todayPnL: number;
+  todayPnLPercent: number;
+  openPositions: number;
+}
+
+export function useCoachBalance() {
+  return useQuery({
+    queryKey: [...coachKeys.all, 'balance'] as const,
+    queryFn: async (): Promise<CoachBalance> => {
+      const response = await fetch('/api/coach/balance');
+      if (!response.ok) {
+        throw new Error('Failed to fetch coach balance');
+      }
+      return response.json();
+    },
+  });
+}
+
+// ============================================================================
 // Summary Hooks
 // ============================================================================
 

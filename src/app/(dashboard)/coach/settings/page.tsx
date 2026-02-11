@@ -187,7 +187,7 @@ export default function CoachSettingsPage() {
             Autonomous Mode
           </CardTitle>
           <CardDescription>
-            Enable the coach to automatically analyze your watchlist, open trades, and close positions at stop loss / take profit — daily during market hours
+            Enable the coach to automatically scan the market, open trades, and close positions at stop loss / take profit — runs every hour, every day
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -198,7 +198,7 @@ export default function CoachSettingsPage() {
               </p>
               <p className="text-sm text-muted-foreground">
                 {runCadenceMinutes > 0
-                  ? `Coach will run automatically every day at 2 PM UTC (weekdays)`
+                  ? `Coach runs automatically every hour (24/7, including crypto)`
                   : 'Coach only runs when you manually trigger analysis'}
               </p>
             </div>
