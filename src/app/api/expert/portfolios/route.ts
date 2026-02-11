@@ -17,7 +17,8 @@ import {
   transformExpertPortfolioRow,
 } from '@/types/expert-portfolio.types';
 import { getMarketQuote } from '@/lib/api/market-data';
-import type { AssetType, Market } from '@/types';
+import * as yahooFinance from '@/lib/api/yahoo-finance';
+import type { AssetType } from '@/types';
 
 export async function GET() {
   try {
@@ -43,37 +44,57 @@ export async function GET() {
       transformExpertPortfolioRow(row)
     );
 
-    // Enrich initialized portfolios with live P&L
-    for (const portfolio of existingPortfolios) {
-      if (!(portfolio as any).id || !(portfolio as any).isInitialized) continue;
+    // Enrich initialized portfolios with live P&L using batch price fetch
+    const initializedPortfolios = existingPortfolios.filter(
+      (p: any) => p.id && p.isInitialized
+    );
+    const portfolioIds = initializedPortfolios.map((p: any) => p.id);
+
+    if (portfolioIds.length > 0) {
       try {
-        const { data: holdingRows } = await (supabase
+        // Fetch ALL holdings for ALL initialized portfolios in one query
+        const { data: allHoldings } = await (supabase
           .from('expert_holding') as any)
-          .select('symbol, asset_type, quantity, total_invested')
-          .eq('portfolio_id', (portfolio as any).id);
+          .select('portfolio_id, symbol, quantity, total_invested')
+          .in('portfolio_id', portfolioIds);
 
-        if (!holdingRows || holdingRows.length === 0) continue;
+        if (allHoldings && allHoldings.length > 0) {
+          // Deduplicate symbols and batch-fetch prices via Yahoo Finance
+          const uniqueSymbols = [...new Set(allHoldings.map((h: any) => h.symbol as string))];
+          const priceMap = new Map<string, number>();
 
-        let totalHoldingsValue = 0;
-        for (const holding of holdingRows) {
-          try {
-            const assetType: AssetType = holding.asset_type === 'etf' ? 'etf' : 'stock';
-            const quote = await getMarketQuote(holding.symbol, assetType, 'us');
-            const currentPrice = quote?.price || null;
-            totalHoldingsValue += currentPrice
-              ? parseFloat(holding.quantity) * currentPrice
-              : parseFloat(holding.total_invested);
-          } catch {
-            totalHoldingsValue += parseFloat(holding.total_invested);
+          // Fetch all prices in parallel via Yahoo Finance (no strict rate limit)
+          const pricePromises = uniqueSymbols.map(async (symbol) => {
+            try {
+              const quote = await yahooFinance.getQuote(symbol);
+              if (quote?.price) priceMap.set(symbol, quote.price);
+            } catch { /* skip failed quotes */ }
+          });
+          await Promise.all(pricePromises);
+
+          // Group holdings by portfolio and calculate values
+          for (const portfolio of initializedPortfolios) {
+            const holdings = allHoldings.filter(
+              (h: any) => h.portfolio_id === (portfolio as any).id
+            );
+            if (holdings.length === 0) continue;
+
+            let totalHoldingsValue = 0;
+            for (const holding of holdings) {
+              const price = priceMap.get(holding.symbol);
+              totalHoldingsValue += price
+                ? parseFloat(holding.quantity) * price
+                : parseFloat(holding.total_invested);
+            }
+
+            const totalPortfolioValue = totalHoldingsValue + (portfolio as any).cashBalance;
+            (portfolio as any).totalValue = totalPortfolioValue;
+            (portfolio as any).totalReturnPct =
+              ((totalPortfolioValue - INITIAL_EXPERT_BALANCE) / INITIAL_EXPERT_BALANCE) * 100;
           }
         }
-
-        const totalPortfolioValue = totalHoldingsValue + (portfolio as any).cashBalance;
-        (portfolio as any).totalValue = totalPortfolioValue;
-        (portfolio as any).totalReturnPct =
-          ((totalPortfolioValue - INITIAL_EXPERT_BALANCE) / INITIAL_EXPERT_BALANCE) * 100;
       } catch (err) {
-        console.error(`Error enriching expert portfolio ${(portfolio as any).id}:`, err);
+        console.error('Error enriching expert portfolios:', err);
       }
     }
 

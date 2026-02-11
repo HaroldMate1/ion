@@ -52,47 +52,65 @@ export async function GET() {
       transformPortfolioRow(row)
     );
 
-    // Enrich initialized portfolios with live P&L
-    for (const portfolio of existingPortfolios) {
-      if (!(portfolio as any).id || !(portfolio as any).isInitialized) continue;
+    // Enrich initialized portfolios with live P&L using batch price fetch
+    const initializedPortfolios = existingPortfolios.filter(
+      (p: any) => p.id && p.isInitialized
+    );
+    const portfolioIds = initializedPortfolios.map((p: any) => p.id);
+
+    if (portfolioIds.length > 0) {
       try {
-        const { data: holdingRows } = await (supabase
+        // Fetch ALL holdings for ALL initialized portfolios in one query
+        const { data: allHoldings } = await (supabase
           .from('llm_holding') as any)
-          .select('symbol, asset_type, market, quantity, total_invested')
-          .eq('portfolio_id', (portfolio as any).id);
+          .select('portfolio_id, symbol, asset_type, quantity, total_invested')
+          .in('portfolio_id', portfolioIds);
 
-        if (!holdingRows || holdingRows.length === 0) continue;
-
-        let totalHoldingsValue = 0;
-        for (const holding of holdingRows) {
-          try {
-            let currentPrice: number | null = null;
-            if (holding.asset_type === 'crypto') {
-              const yahooSymbol = `${holding.symbol.toUpperCase()}-USD`;
-              const quote = await yahooFinance.getQuote(yahooSymbol);
-              currentPrice = quote?.price || null;
-            } else {
-              const assetType: AssetType =
-                ['etf', 'bond', 'reit', 'commodity'].includes(holding.asset_type) ? 'etf' : 'stock';
-              const market: Market =
-                holding.market === 'europe' ? 'europe' : 'us';
-              const quote = await getMarketQuote(holding.symbol, assetType, market);
-              currentPrice = quote?.price || null;
+        if (allHoldings && allHoldings.length > 0) {
+          // Deduplicate symbols and resolve Yahoo Finance symbol format
+          const symbolMap = new Map<string, string>(); // originalSymbol -> yahooSymbol
+          for (const h of allHoldings) {
+            if (!symbolMap.has(h.symbol)) {
+              symbolMap.set(
+                h.symbol,
+                h.asset_type === 'crypto' ? `${h.symbol.toUpperCase()}-USD` : h.symbol
+              );
             }
-            totalHoldingsValue += currentPrice
-              ? parseFloat(holding.quantity) * currentPrice
-              : parseFloat(holding.total_invested);
-          } catch {
-            totalHoldingsValue += parseFloat(holding.total_invested);
+          }
+
+          // Batch-fetch all prices in parallel via Yahoo Finance
+          const priceMap = new Map<string, number>();
+          const pricePromises = [...symbolMap.entries()].map(async ([originalSymbol, yahooSymbol]) => {
+            try {
+              const quote = await yahooFinance.getQuote(yahooSymbol);
+              if (quote?.price) priceMap.set(originalSymbol, quote.price);
+            } catch { /* skip failed quotes */ }
+          });
+          await Promise.all(pricePromises);
+
+          // Group holdings by portfolio and calculate values
+          for (const portfolio of initializedPortfolios) {
+            const holdings = allHoldings.filter(
+              (h: any) => h.portfolio_id === (portfolio as any).id
+            );
+            if (holdings.length === 0) continue;
+
+            let totalHoldingsValue = 0;
+            for (const holding of holdings) {
+              const price = priceMap.get(holding.symbol);
+              totalHoldingsValue += price
+                ? parseFloat(holding.quantity) * price
+                : parseFloat(holding.total_invested);
+            }
+
+            const totalPortfolioValue = totalHoldingsValue + (portfolio as any).cashBalance;
+            (portfolio as any).totalValue = totalPortfolioValue;
+            (portfolio as any).totalReturnPct =
+              ((totalPortfolioValue - INITIAL_PORTFOLIO_BALANCE) / INITIAL_PORTFOLIO_BALANCE) * 100;
           }
         }
-
-        const totalPortfolioValue = totalHoldingsValue + (portfolio as any).cashBalance;
-        (portfolio as any).totalValue = totalPortfolioValue;
-        (portfolio as any).totalReturnPct =
-          ((totalPortfolioValue - INITIAL_PORTFOLIO_BALANCE) / INITIAL_PORTFOLIO_BALANCE) * 100;
       } catch (err) {
-        console.error(`Error enriching LLM portfolio ${(portfolio as any).id}:`, err);
+        console.error('Error enriching LLM portfolios:', err);
       }
     }
 
