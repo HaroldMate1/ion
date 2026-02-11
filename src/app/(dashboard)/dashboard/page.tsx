@@ -9,7 +9,6 @@ import { useAuth } from '@/hooks/use-auth';
 import { useBalance, usePortfolio, usePortfolioSummary } from '@/hooks/use-portfolio';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DollarSign, TrendingUp, Activity, ArrowRight, Brain } from 'lucide-react';
 import { useCoachSummary } from '@/hooks/use-coach';
 import Link from 'next/link';
@@ -22,17 +21,17 @@ export default function DashboardPage() {
   const coachSummary = useCoachSummary();
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 px-1 md:px-0">
       {/* Welcome Section */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Welcome back, {profile?.display_name || 'Trader'}!</h1>
-          <p className="text-muted-foreground mt-2">
+          <h1 className="text-2xl md:text-3xl font-bold">Welcome back, {profile?.display_name || 'Trader'}!</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Here's your portfolio overview
           </p>
         </div>
         <Link href="/trade">
-          <Button>
+          <Button className="w-full sm:w-auto">
             Start Trading
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
@@ -40,7 +39,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Available Cash</CardTitle>
@@ -154,66 +153,51 @@ export default function DashboardPage() {
               </Link>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Asset</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Avg Buy Price</TableHead>
-                  <TableHead className="text-right">Current Price</TableHead>
-                  <TableHead className="text-right">Total Value</TableHead>
-                  <TableHead className="text-right">P&L</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {holdings.map((holding) => {
-                  const isPriceAvailable = holding.current_price && holding.current_price > 0;
+            <div className="space-y-2">
+              {holdings.map((holding) => {
+                const isPriceAvailable = holding.current_price && holding.current_price > 0;
 
-                  return (
-                    <TableRow key={holding.id}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{holding.symbol}</div>
-                          <div className="text-sm text-muted-foreground">{holding.asset_name}</div>
+                return (
+                  <div key={holding.id} className="p-3 border rounded-lg space-y-1.5">
+                    {/* Row 1: Symbol + P&L */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-medium">{holding.symbol}</span>
+                        <span className="text-sm text-muted-foreground ml-2 hidden sm:inline">{holding.asset_name}</span>
+                      </div>
+                      {isPriceAvailable && holding.unrealized_pl !== undefined ? (
+                        <div className={`text-right ${holding.unrealized_pl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <span className="font-medium">
+                            {holding.unrealized_pl >= 0 ? '+' : ''}${holding.unrealized_pl.toFixed(2)}
+                          </span>
+                          <span className="text-xs ml-1">
+                            ({holding.unrealized_pl_percentage !== undefined
+                              ? `${holding.unrealized_pl_percentage >= 0 ? '+' : ''}${holding.unrealized_pl_percentage.toFixed(2)}%`
+                              : '—'})
+                          </span>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-right">{holding.quantity}</TableCell>
-                      <TableCell className="text-right">${holding.average_buy_price.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">
-                        {isPriceAvailable ? (
-                          `$${holding.current_price!.toFixed(2)}`
-                        ) : (
-                          <span className="text-muted-foreground text-xs">Price unavailable</span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">Price unavailable</span>
+                      )}
+                    </div>
+                    {/* Row 2: Name (mobile only) + details */}
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span className="truncate mr-2 sm:hidden">{holding.asset_name}</span>
+                      <div className="flex gap-3 text-xs shrink-0 ml-auto">
+                        <span>Qty: {holding.quantity}</span>
+                        <span>Avg: ${holding.average_buy_price.toFixed(2)}</span>
+                        {isPriceAvailable && (
+                          <span>Now: ${holding.current_price!.toFixed(2)}</span>
                         )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {isPriceAvailable && holding.current_value ? (
-                          `$${holding.current_value.toFixed(2)}`
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
+                        {isPriceAvailable && holding.current_value && (
+                          <span className="font-medium text-foreground">${holding.current_value.toFixed(2)}</span>
                         )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {isPriceAvailable && holding.unrealized_pl !== undefined ? (
-                          <div className={holding.unrealized_pl >= 0 ? 'text-green-600' : 'text-red-600'}>
-                            <div>
-                              {holding.unrealized_pl >= 0 ? '+' : ''}${holding.unrealized_pl.toFixed(2)}
-                            </div>
-                            <div className="text-xs">
-                              {holding.unrealized_pl_percentage !== undefined
-                                ? `${holding.unrealized_pl_percentage >= 0 ? '+' : ''}${holding.unrealized_pl_percentage.toFixed(2)}%`
-                                : '—'}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">Price unavailable</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>

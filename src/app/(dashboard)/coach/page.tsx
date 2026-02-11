@@ -98,38 +98,40 @@ export default function CoachPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="container mx-auto py-4 md:py-6 space-y-4 md:space-y-6 px-2 md:px-0">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Trading Coach</h1>
-          <p className="text-muted-foreground">
-            AI-powered trading analysis and education
-          </p>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold">Trading Coach</h1>
+            <p className="text-sm text-muted-foreground">
+              AI-powered trading analysis and education
+            </p>
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-4 gap-2">
           <Link href="/coach/settings">
-            <Button variant="outline" size="sm">
-              <Settings className="h-4 w-4 mr-2" />
-              Settings
+            <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
+              <Settings className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Settings</span>
             </Button>
           </Link>
           <Link href="/coach/reports">
-            <Button variant="outline" size="sm">
-              <FileText className="h-4 w-4 mr-2" />
-              Reports
+            <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
+              <FileText className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Reports</span>
             </Button>
           </Link>
           <Link href="/coach/trades">
-            <Button variant="outline" size="sm">
-              <Briefcase className="h-4 w-4 mr-2" />
-              Paper Trades
+            <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
+              <Briefcase className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Paper Trades</span>
             </Button>
           </Link>
           <Link href="/coach/movements">
-            <Button variant="outline" size="sm">
-              <ScrollText className="h-4 w-4 mr-2" />
-              Movements
+            <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
+              <ScrollText className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Movements</span>
             </Button>
           </Link>
         </div>
@@ -158,16 +160,16 @@ export default function CoachPage() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Actionable Signals</CardTitle>
+            <CardTitle className="text-sm font-medium">Recent Signals</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{actionableSignals}</div>
             <p className="text-xs text-muted-foreground">
-              {unacknowledgedSignals} total unacknowledged
+              Auto-executed by coach
             </p>
           </CardContent>
         </Card>
@@ -223,10 +225,11 @@ export default function CoachPage() {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         <Button
           onClick={handleRunAnalysis}
           disabled={isRunning || killSwitchActive}
+          className="w-full sm:w-auto"
         >
           {isRunning ? (
             <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -274,27 +277,21 @@ export default function CoachPage() {
               {signalsData?.signals?.map((signal) => (
                 <div
                   key={signal.id}
-                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                  className="p-3 border rounded-lg hover:bg-muted/50 transition-colors space-y-2"
                 >
-                  <div className="flex items-center gap-3">
-                    <ActionBadge action={signal.consensusAction} />
-                    <div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ActionBadge action={signal.consensusAction} />
                       <Link
                         href={`/coach/signals/${signal.id}`}
                         className="font-medium hover:underline"
                       >
                         {signal.symbol}
                       </Link>
-                      <p className="text-sm text-muted-foreground">
-                        {signal.timeframe} •{' '}
-                        {new Date(signal.signalTs).toLocaleString()}
-                      </p>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-right mr-4">
+                    <div className="text-right">
                       <p className="text-sm font-medium">
-                        Score: {(signal.consensusScore * 100).toFixed(0)}%
+                        {(signal.consensusScore * 100).toFixed(0)}%
                       </p>
                       {signal.riskRewardRatio && (
                         <p className="text-xs text-muted-foreground">
@@ -302,25 +299,29 @@ export default function CoachPage() {
                         </p>
                       )}
                     </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      {signal.timeframe} • {new Date(signal.signalTs).toLocaleDateString()}
+                    </p>
                     {signal.acknowledged ? (
-                      <Badge variant="secondary">
+                      <Badge variant="secondary" className="text-xs">
                         <CheckCircle className="h-3 w-3 mr-1" />
-                        Reviewed
+                        Auto-executed
                       </Badge>
                     ) : (
-                      <Button
-                        size="sm"
+                      <Badge
                         variant="outline"
+                        className="text-xs cursor-pointer"
                         onClick={() =>
                           acknowledgeSignal.mutate({
                             id: signal.id,
                             acknowledged: true,
                           })
                         }
-                        disabled={acknowledgeSignal.isPending}
                       >
-                        Mark Reviewed
-                      </Button>
+                        Dismiss
+                      </Badge>
                     )}
                   </div>
                 </div>

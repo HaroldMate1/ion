@@ -43,6 +43,40 @@ export async function GET() {
       transformExpertPortfolioRow(row)
     );
 
+    // Enrich initialized portfolios with live P&L
+    for (const portfolio of existingPortfolios) {
+      if (!(portfolio as any).id || !(portfolio as any).isInitialized) continue;
+      try {
+        const { data: holdingRows } = await (supabase
+          .from('expert_holding') as any)
+          .select('symbol, asset_type, quantity, total_invested')
+          .eq('portfolio_id', (portfolio as any).id);
+
+        if (!holdingRows || holdingRows.length === 0) continue;
+
+        let totalHoldingsValue = 0;
+        for (const holding of holdingRows) {
+          try {
+            const assetType: AssetType = holding.asset_type === 'etf' ? 'etf' : 'stock';
+            const quote = await getMarketQuote(holding.symbol, assetType, 'us');
+            const currentPrice = quote?.price || null;
+            totalHoldingsValue += currentPrice
+              ? parseFloat(holding.quantity) * currentPrice
+              : parseFloat(holding.total_invested);
+          } catch {
+            totalHoldingsValue += parseFloat(holding.total_invested);
+          }
+        }
+
+        const totalPortfolioValue = totalHoldingsValue + (portfolio as any).cashBalance;
+        (portfolio as any).totalValue = totalPortfolioValue;
+        (portfolio as any).totalReturnPct =
+          ((totalPortfolioValue - INITIAL_EXPERT_BALANCE) / INITIAL_EXPERT_BALANCE) * 100;
+      } catch (err) {
+        console.error(`Error enriching expert portfolio ${(portfolio as any).id}:`, err);
+      }
+    }
+
     const portfolios = INVESTOR_SLUGS.map((slug) => {
       const investor = EXPERT_INVESTORS[slug];
       const existing = existingPortfolios.find((p: any) => p.investorSlug === slug);

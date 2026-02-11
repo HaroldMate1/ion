@@ -78,20 +78,20 @@ export default function LLMPortfoliosPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="container mx-auto py-4 md:py-6 space-y-4 md:space-y-6 px-2 md:px-0">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Bot className="h-8 w-8" />
+        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
+          <Bot className="h-6 w-6 md:h-8 md:w-8" />
           LLM Portfolios
         </h1>
-        <p className="text-muted-foreground">
-          Compare investment strategies from 5 different AI models, each starting with $100,000
+        <p className="text-sm text-muted-foreground">
+          Compare investment strategies from 5 AI models, each starting with $100,000
         </p>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
         {portfolios.map((portfolio) => (
           <Card
             key={portfolio.provider}
@@ -109,17 +109,17 @@ export default function LLMPortfoliosPage() {
             <CardContent>
               {portfolio.isInitialized ? (
                 <>
-                  <div className="text-2xl font-bold">
-                    ${portfolio.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <div className="text-lg md:text-2xl font-bold truncate">
+                    ${portfolio.totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                   </div>
-                  <p className={`text-sm ${portfolio.totalReturnPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  <p className={`text-xs md:text-sm ${portfolio.totalReturnPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                     {portfolio.totalReturnPct >= 0 ? '+' : ''}{portfolio.totalReturnPct.toFixed(2)}%
                   </p>
                 </>
               ) : (
                 <>
-                  <div className="text-2xl font-bold text-muted-foreground">$100,000</div>
-                  <p className="text-sm text-muted-foreground">Not initialized</p>
+                  <div className="text-lg md:text-2xl font-bold text-muted-foreground">$100k</div>
+                  <p className="text-xs md:text-sm text-muted-foreground">Not initialized</p>
                 </>
               )}
             </CardContent>
@@ -129,16 +129,13 @@ export default function LLMPortfoliosPage() {
 
       {/* Tabs for Each LLM */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as LLMProvider)}>
-        <TabsList className="grid grid-cols-5 w-full">
+        <TabsList className="grid grid-cols-5 w-full h-auto">
           {LLM_PROVIDERS.map((provider) => {
             const portfolio = portfolios.find(p => p.provider === provider);
             return (
-              <TabsTrigger key={provider} value={provider} className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${LLM_COLORS[provider]}`} />
-                {portfolio?.displayName || provider}
-                {portfolio?.isInitialized && (
-                  <Badge variant="secondary" className="ml-1 text-xs">Active</Badge>
-                )}
+              <TabsTrigger key={provider} value={provider} className="flex items-center gap-1 text-xs md:text-sm px-1 md:px-3 py-1.5">
+                <div className={`w-2 h-2 rounded-full shrink-0 ${LLM_COLORS[provider]}`} />
+                <span className="truncate">{portfolio?.displayName || provider}</span>
               </TabsTrigger>
             );
           })}
@@ -230,7 +227,7 @@ function PortfolioDetail({ portfolio, isLoading, color }: PortfolioDetailProps) 
   return (
     <div className="space-y-4">
       {/* Summary */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
@@ -350,41 +347,34 @@ function HoldingRow({ holding, totalValue }: { holding: any; totalValue: number 
   const actualAlloc = totalValue > 0 ? (value / totalValue) * 100 : 0;
 
   return (
-    <div className="flex items-center gap-4 p-3 border rounded-lg">
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
+    <div className="p-3 border rounded-lg space-y-2">
+      {/* Row 1: Symbol + P&L */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
           <span className="font-medium">{holding.symbol}</span>
-          <Badge variant="outline" className="text-xs">{holding.assetType}</Badge>
+          <Badge variant="outline" className="text-xs shrink-0">{holding.assetType}</Badge>
         </div>
-        <p className="text-sm text-muted-foreground">{holding.assetName}</p>
+        <div className="text-right">
+          <p className={`font-medium ${pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
+          </p>
+          <p className={`text-xs ${pnlPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%
+          </p>
+        </div>
       </div>
-
-      <div className="text-right">
-        <p className="text-sm text-muted-foreground">Target</p>
-        <p className="font-medium">{holding.targetAllocationPct.toFixed(1)}%</p>
-      </div>
-
-      <div className="w-24">
-        <p className="text-xs text-muted-foreground mb-1">Actual: {actualAlloc.toFixed(1)}%</p>
-        <Progress value={actualAlloc} className="h-2" />
-      </div>
-
-      <div className="text-right min-w-[100px]">
-        <p className="font-medium">
+      {/* Row 2: Name + Value */}
+      <div className="flex items-center justify-between text-sm">
+        <p className="text-muted-foreground truncate mr-2">{holding.assetName}</p>
+        <p className="font-medium shrink-0">
           ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
-        <p className="text-sm text-muted-foreground">
-          {holding.quantity.toFixed(4)} @ ${holding.currentPrice?.toFixed(2) || holding.averageBuyPrice.toFixed(2)}
-        </p>
       </div>
-
-      <div className="text-right min-w-[100px]">
-        <p className={`font-medium ${pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-          {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
-        </p>
-        <p className={`text-sm ${pnlPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-          {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%
-        </p>
+      {/* Row 3: Allocation bar */}
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span className="shrink-0">Target: {holding.targetAllocationPct.toFixed(1)}%</span>
+        <Progress value={actualAlloc} className="h-1.5 flex-1" />
+        <span className="shrink-0">{actualAlloc.toFixed(1)}%</span>
       </div>
     </div>
   );

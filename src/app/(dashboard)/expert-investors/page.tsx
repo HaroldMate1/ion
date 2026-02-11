@@ -95,11 +95,11 @@ export default function ExpertInvestorsPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="container mx-auto py-4 md:py-6 space-y-4 md:space-y-6 px-2 md:px-0">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Crown className="h-8 w-8" />
+        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
+          <Crown className="h-6 w-6 md:h-8 md:w-8" />
           Expert Investors
         </h1>
         <p className="text-muted-foreground">
@@ -277,27 +277,30 @@ function InvestorPortfolioDetail({
       {/* Investor Info */}
       <Card>
         <CardContent className="pt-4">
-          <div className="flex items-center gap-4">
-            <div className={`w-12 h-12 rounded-full ${color} flex items-center justify-center text-white font-bold`}>
-              <User className="h-6 w-6" />
+          <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full ${color} flex items-center justify-center text-white font-bold shrink-0`}>
+                <User className="h-5 w-5 md:h-6 md:w-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg md:text-xl font-bold">{portfolio.fullName}</h2>
+                <p className="text-sm text-muted-foreground">{portfolio.title}</p>
+              </div>
             </div>
-            <div className="flex-1">
-              <h2 className="text-xl font-bold">{portfolio.fullName}</h2>
-              <p className="text-sm text-muted-foreground">{portfolio.title}</p>
-              <p className="text-sm mt-1">{portfolio.description}</p>
-            </div>
-            <div className="text-right">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground md:hidden">{portfolio.description}</p>
+            <p className="text-sm mt-1 hidden md:block flex-1">{portfolio.description}</p>
+            <div className="flex flex-wrap gap-2 md:flex-col md:text-right md:shrink-0">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Database className="h-3 w-3" />
                 {portfolio.dataSource}
               </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Calendar className="h-3 w-3" />
-                Last updated: {portfolio.lastUpdated}
+                {portfolio.lastUpdated}
               </div>
-              <Badge variant="outline" className="mt-1 text-xs">
+              <Badge variant="outline" className="text-xs">
                 <RefreshCw className="h-3 w-3 mr-1" />
-                Prices update every 60s
+                Live prices
               </Badge>
             </div>
           </div>
@@ -305,7 +308,7 @@ function InvestorPortfolioDetail({
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
@@ -408,41 +411,40 @@ function InvestorHoldingRow({ holding, totalValue }: { holding: any; totalValue:
   const actualAlloc = totalValue > 0 ? (value / totalValue) * 100 : 0;
 
   return (
-    <div className="flex items-center gap-4 p-3 border rounded-lg">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+    <div className="p-3 border rounded-lg space-y-1">
+      {/* Row 1: Symbol + badge | P&L */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
           <span className="font-medium">{holding.symbol}</span>
           <Badge variant="outline" className="text-xs">{holding.assetType}</Badge>
         </div>
-        <p className="text-sm text-muted-foreground truncate">{holding.assetName}</p>
+        <div className="text-right shrink-0">
+          <span className={`font-medium ${pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
+          </span>
+          <span className={`text-xs ml-1 ${pnlPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            ({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%)
+          </span>
+        </div>
       </div>
-
-      <div className="text-right hidden sm:block">
-        <p className="text-sm text-muted-foreground">Target</p>
-        <p className="font-medium">{holding.targetAllocationPct.toFixed(1)}%</p>
-      </div>
-
-      <div className="w-24 hidden md:block">
-        <p className="text-xs text-muted-foreground mb-1">Actual: {actualAlloc.toFixed(1)}%</p>
-        <Progress value={actualAlloc} className="h-2" />
-      </div>
-
-      <div className="text-right min-w-[100px]">
-        <p className="font-medium">
+      {/* Row 2: Name | Value */}
+      <div className="flex items-center justify-between text-sm">
+        <p className="text-muted-foreground truncate mr-2">{holding.assetName}</p>
+        <p className="font-medium shrink-0">
           ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
-        <p className="text-sm text-muted-foreground">
-          {holding.quantity.toFixed(4)} @ ${holding.currentPrice?.toFixed(2) || holding.averageBuyPrice.toFixed(2)}
-        </p>
       </div>
-
-      <div className="text-right min-w-[90px]">
-        <p className={`font-medium ${pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-          {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
-        </p>
-        <p className={`text-sm ${pnlPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-          {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%
-        </p>
+      {/* Row 3: Target + Actual allocation */}
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span>Target: {holding.targetAllocationPct.toFixed(1)}%</span>
+        <span className="hidden md:inline">|</span>
+        <span className="hidden md:flex items-center gap-1 flex-1">
+          Actual: {actualAlloc.toFixed(1)}%
+          <Progress value={actualAlloc} className="h-1.5 flex-1 max-w-[80px]" />
+        </span>
+        <span className="ml-auto">
+          {holding.quantity.toFixed(4)} @ ${holding.currentPrice?.toFixed(2) || holding.averageBuyPrice.toFixed(2)}
+        </span>
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createPaperTradeSchema } from '@/schemas/coach.schema';
 import { getMarketQuote } from '@/lib/api/market-data';
+import { calculatePnL } from '@/lib/coach/risk/riskEngine';
 
 export async function GET(request: NextRequest) {
   try {
@@ -58,8 +59,32 @@ export async function GET(request: NextRequest) {
     // Transform to camelCase
     const transformedTrades = (trades || []).map(transformTradeRow);
 
+    // Enrich open trades with live unrealized P&L
+    const enrichedTrades = await Promise.all(
+      transformedTrades.map(async (trade: any) => {
+        if (trade.status !== 'open') return trade;
+        try {
+          const quote = await getMarketQuote(
+            trade.symbol,
+            trade.assetType || 'stock',
+            trade.market || 'us'
+          );
+          if (!quote) return trade;
+          const { pnl, pnlPercent } = calculatePnL(
+            trade.entryPrice,
+            quote.price,
+            trade.quantity,
+            trade.side
+          );
+          return { ...trade, pnlUsd: pnl, pnlPct: pnlPercent, currentPrice: quote.price };
+        } catch {
+          return trade;
+        }
+      })
+    );
+
     return NextResponse.json({
-      trades: transformedTrades,
+      trades: enrichedTrades,
       total: count || 0,
       limit,
       offset,

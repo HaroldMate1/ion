@@ -216,7 +216,7 @@ export async function runAnalysisForUser(
         market_open: signal.marketOpen,
         current_price: signal.currentPrice,
         is_stale: signal.isStale,
-        acknowledged: false,
+        acknowledged: true,
       })
       .select('id')
       .single();
@@ -255,12 +255,6 @@ export async function runAnalysisForUser(
         opened_at: new Date().toISOString(),
         notes: `Auto-executed by coach. Score: ${((signal.consensusScore || 0) * 100).toFixed(0)}%`,
       });
-
-      if (savedSignal?.id) {
-        await (supabase.from('coach_signal') as any)
-          .update({ acknowledged: true })
-          .eq('id', savedSignal.id);
-      }
 
       openPositionsCount++;
       autoExecutedTrades.push({

@@ -52,6 +52,50 @@ export async function GET() {
       transformPortfolioRow(row)
     );
 
+    // Enrich initialized portfolios with live P&L
+    for (const portfolio of existingPortfolios) {
+      if (!(portfolio as any).id || !(portfolio as any).isInitialized) continue;
+      try {
+        const { data: holdingRows } = await (supabase
+          .from('llm_holding') as any)
+          .select('symbol, asset_type, market, quantity, total_invested')
+          .eq('portfolio_id', (portfolio as any).id);
+
+        if (!holdingRows || holdingRows.length === 0) continue;
+
+        let totalHoldingsValue = 0;
+        for (const holding of holdingRows) {
+          try {
+            let currentPrice: number | null = null;
+            if (holding.asset_type === 'crypto') {
+              const yahooSymbol = `${holding.symbol.toUpperCase()}-USD`;
+              const quote = await yahooFinance.getQuote(yahooSymbol);
+              currentPrice = quote?.price || null;
+            } else {
+              const assetType: AssetType =
+                ['etf', 'bond', 'reit', 'commodity'].includes(holding.asset_type) ? 'etf' : 'stock';
+              const market: Market =
+                holding.market === 'europe' ? 'europe' : 'us';
+              const quote = await getMarketQuote(holding.symbol, assetType, market);
+              currentPrice = quote?.price || null;
+            }
+            totalHoldingsValue += currentPrice
+              ? parseFloat(holding.quantity) * currentPrice
+              : parseFloat(holding.total_invested);
+          } catch {
+            totalHoldingsValue += parseFloat(holding.total_invested);
+          }
+        }
+
+        const totalPortfolioValue = totalHoldingsValue + (portfolio as any).cashBalance;
+        (portfolio as any).totalValue = totalPortfolioValue;
+        (portfolio as any).totalReturnPct =
+          ((totalPortfolioValue - INITIAL_PORTFOLIO_BALANCE) / INITIAL_PORTFOLIO_BALANCE) * 100;
+      } catch (err) {
+        console.error(`Error enriching LLM portfolio ${(portfolio as any).id}:`, err);
+      }
+    }
+
     // Create a complete list with all providers (including uninitialized ones)
     const portfolios = LLM_PROVIDERS.map((provider) => {
       const existing = existingPortfolios.find((p: any) => p.provider === provider);
