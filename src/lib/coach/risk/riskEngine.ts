@@ -1,15 +1,13 @@
 /**
  * Risk Engine
- * Enforces position sizing, circuit breakers, and risk management rules.
+ * Handles position sizing, stop loss, and take profit management.
+ * Fully autonomous — no circuit breakers or position limits.
  *
- * Rules enforced:
- * 1. Max allocation per trade (% of portfolio)
- * 2. Max open positions
- * 3. Daily drawdown limit (circuit breaker)
- * 4. Consecutive losses circuit breaker
- * 5. ATR-based stop loss
- * 6. Partial take profits (TP1 at 1R, TP2 at 2R, runner)
- * 7. Trailing stop after TP1
+ * Rules:
+ * 1. Kill switch (emergency only)
+ * 2. ATR-based stop loss
+ * 3. Partial take profits (TP1 at 1R, TP2 at 2R, runner)
+ * 4. Trailing stop after TP1
  */
 
 import type {
@@ -51,7 +49,7 @@ export function assessRisk(
   const warnings: string[] = [];
   const rules: string[] = [];
 
-  // Rule 1: Check kill switch
+  // Rule 1: Check kill switch (emergency only)
   if (config.killSwitch) {
     return {
       approved: false,
@@ -71,42 +69,11 @@ export function assessRisk(
     };
   }
 
-  // Rule 3: Daily drawdown circuit breaker
-  if (
-    portfolioState.todayPnLPercent <= -config.riskParams.dailyDrawdownLimitPct
-  ) {
-    return {
-      approved: false,
-      reason: `Daily drawdown limit reached (${portfolioState.todayPnLPercent.toFixed(2)}%). Trading paused for today.`,
-      warnings: [],
-      rules: ['Circuit breaker: daily drawdown'],
-    };
-  }
-
-  // Rule 4: Consecutive losses circuit breaker
-  if (portfolioState.consecutiveLosses >= config.riskParams.maxConsecutiveLosses) {
-    return {
-      approved: false,
-      reason: `Consecutive losses limit reached (${portfolioState.consecutiveLosses}). Review strategy before continuing.`,
-      warnings: [],
-      rules: ['Circuit breaker: consecutive losses'],
-    };
-  }
-
-  // Rule 5: Max open positions
-  if (portfolioState.openPositions >= config.riskParams.maxOpenPositions) {
-    return {
-      approved: false,
-      reason: `Maximum open positions reached (${config.riskParams.maxOpenPositions}). Close a position first.`,
-      warnings: [],
-      rules: ['Max positions limit'],
-    };
-  }
-
-  // Rule 6: Calculate position size based on max allocation
-  const maxAllocation =
-    (portfolioState.totalValue * config.riskParams.maxAllocationPct) / 100;
-  let positionSize = Math.min(maxAllocation, portfolioState.availableCash);
+  // Position sizing: up to 15% of portfolio per trade, capped by available cash
+  let positionSize = Math.min(
+    portfolioState.totalValue * 0.15,
+    portfolioState.availableCash
+  );
 
   if (positionSize < 10) {
     return {
@@ -117,11 +84,9 @@ export function assessRisk(
     };
   }
 
-  rules.push(
-    `Max allocation: ${config.riskParams.maxAllocationPct}% ($${maxAllocation.toFixed(2)})`
-  );
+  rules.push(`Position size: $${positionSize.toFixed(2)}`);
 
-  // Rule 7: Calculate ATR-based stop loss
+  // Calculate ATR-based stop loss
   const stopLossPct =
     assetType === 'crypto'
       ? config.riskParams.stopLossCryptoPct
@@ -153,19 +118,8 @@ export function assessRisk(
 
   // Rule 8: Risk-based position sizing (1R = max loss)
   const riskPerShare = Math.abs(currentPrice - stopLoss);
-  const maxRiskAmount = portfolioState.totalValue * 0.02; // Risk max 2% per trade
-  const riskBasedSize = (maxRiskAmount / riskPerShare) * currentPrice;
 
-  if (riskBasedSize < positionSize) {
-    warnings.push(
-      `Position reduced from $${positionSize.toFixed(2)} to $${riskBasedSize.toFixed(2)} for risk management.`
-    );
-    positionSize = riskBasedSize;
-  }
-
-  rules.push(`Risk per trade: 2% max ($${maxRiskAmount.toFixed(2)})`);
-
-  // Rule 9: Calculate take profit levels
+  // Calculate take profit levels
   const takeProfits = calculateTakeProfits(
     currentPrice,
     stopDistance,
@@ -191,19 +145,6 @@ export function assessRisk(
   }
 
   rules.push(`R:R ratio: ${rrRatio.toFixed(2)}`);
-
-  // Warn if approaching limits
-  if (portfolioState.todayPnLPercent <= -config.riskParams.dailyDrawdownLimitPct * 0.7) {
-    warnings.push(
-      `Approaching daily drawdown limit (${portfolioState.todayPnLPercent.toFixed(2)}% of ${config.riskParams.dailyDrawdownLimitPct}% max).`
-    );
-  }
-
-  if (portfolioState.consecutiveLosses >= config.riskParams.maxConsecutiveLosses - 1) {
-    warnings.push(
-      `Next loss will trigger consecutive losses circuit breaker.`
-    );
-  }
 
   return {
     approved: true,

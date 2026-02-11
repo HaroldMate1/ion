@@ -182,7 +182,7 @@ export default function CoachPage() {
           <CardContent>
             <div className="text-2xl font-bold">{openTrades}</div>
             <p className="text-xs text-muted-foreground">
-              Max: {config?.riskParams?.maxOpenPositions || 4}
+              No limit — fully autonomous
             </p>
           </CardContent>
         </Card>

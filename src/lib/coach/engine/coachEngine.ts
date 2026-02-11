@@ -158,17 +158,6 @@ export async function runBatchAnalysis(
     };
   }
 
-  // Check circuit breaker
-  if (portfolioState.todayPnLPercent <= -config.riskParams.dailyDrawdownLimitPct) {
-    return {
-      success: false,
-      signalsGenerated: 0,
-      signals: [],
-      circuitBreakerActive: true,
-      errors: ['Daily drawdown limit reached. Analysis paused.'],
-    };
-  }
-
   const signals: CoachSignal[] = [];
   const errors: string[] = [];
 

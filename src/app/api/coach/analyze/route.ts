@@ -129,18 +129,13 @@ export async function POST(request: NextRequest) {
           market_open: signal.marketOpen,
           current_price: signal.currentPrice,
           is_stale: signal.isStale,
-          acknowledged: false,
+          acknowledged: true,
         })
         .select('id')
         .single();
 
       // Auto-execute BUY/SELL signals
       if (signal.consensusAction !== 'HOLD' && signal.currentPrice && !signal.isStale) {
-        // Check max open positions
-        if (openPositionsCount >= config.riskParams.maxOpenPositions) {
-          continue;
-        }
-
         // Check for duplicate open trade on same symbol
         const { data: existingTrade } = await (supabase.from('coach_paper_trade') as any)
           .select('id')
@@ -151,9 +146,8 @@ export async function POST(request: NextRequest) {
 
         if (existingTrade) continue;
 
-        // Calculate position size
-        const maxAllocation = (portfolioState.totalValue * config.riskParams.maxAllocationPct) / 100;
-        const sizeUsd = Math.min(maxAllocation, portfolioState.availableCash);
+        // Position sizing: up to 15% of portfolio, capped by available cash
+        const sizeUsd = Math.min(portfolioState.availableCash, portfolioState.totalValue * 0.15);
 
         if (sizeUsd < 10) continue;
 

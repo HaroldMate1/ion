@@ -16,7 +16,6 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import {
   ArrowLeft,
   RefreshCw,
@@ -45,12 +44,12 @@ export default function CoachSettingsPage() {
   const [minConsensusScore, setMinConsensusScore] = useState(0.55);
   const [runCadenceMinutes, setRunCadenceMinutes] = useState(0);
   const [riskParams, setRiskParams] = useState({
-    maxAllocationPct: 10,
-    maxOpenPositions: 4,
+    maxAllocationPct: 100,
+    maxOpenPositions: 100,
     stopLossStockPct: 2.5,
     stopLossCryptoPct: 6,
-    dailyDrawdownLimitPct: 3,
-    maxConsecutiveLosses: 3,
+    dailyDrawdownLimitPct: 100,
+    maxConsecutiveLosses: 100,
   });
 
   // Initialize from config
@@ -234,7 +233,7 @@ export default function CoachSettingsPage() {
               </Button>
             </div>
             <Button variant="outline" onClick={handleLoadDefaults} className="w-full sm:w-auto whitespace-nowrap">
-              Load Top 30 + Crypto
+              Load Auto-Discover Universe
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -392,53 +391,15 @@ export default function CoachSettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Risk Parameters */}
+      {/* Stop Loss Settings */}
       <Card>
         <CardHeader>
-          <CardTitle>Risk Management</CardTitle>
+          <CardTitle>Stop Loss Settings</CardTitle>
           <CardDescription>
-            Configure position sizing and risk limits
+            Automatic stop loss levels for trade protection
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="maxAllocation">Max Allocation per Trade (%)</Label>
-              <Input
-                id="maxAllocation"
-                type="number"
-                min={1}
-                max={100}
-                value={riskParams.maxAllocationPct}
-                onChange={(e) =>
-                  setRiskParams((r) => ({
-                    ...r,
-                    maxAllocationPct: parseFloat(e.target.value) || 0,
-                  }))
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="maxPositions">Max Open Positions</Label>
-              <Input
-                id="maxPositions"
-                type="number"
-                min={1}
-                max={20}
-                value={riskParams.maxOpenPositions}
-                onChange={(e) =>
-                  setRiskParams((r) => ({
-                    ...r,
-                    maxOpenPositions: parseInt(e.target.value) || 1,
-                  }))
-                }
-              />
-            </div>
-          </div>
-
-          <Separator />
-
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="stopLossStock">Stock Stop Loss (%)</Label>
@@ -476,51 +437,10 @@ export default function CoachSettingsPage() {
               />
             </div>
           </div>
-
-          <Separator />
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="dailyDrawdown">Daily Drawdown Limit (%)</Label>
-              <Input
-                id="dailyDrawdown"
-                type="number"
-                min={1}
-                max={20}
-                step={0.5}
-                value={riskParams.dailyDrawdownLimitPct}
-                onChange={(e) =>
-                  setRiskParams((r) => ({
-                    ...r,
-                    dailyDrawdownLimitPct: parseFloat(e.target.value) || 0,
-                  }))
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Circuit breaker triggers when daily loss exceeds this
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="maxLosses">Max Consecutive Losses</Label>
-              <Input
-                id="maxLosses"
-                type="number"
-                min={1}
-                max={10}
-                value={riskParams.maxConsecutiveLosses}
-                onChange={(e) =>
-                  setRiskParams((r) => ({
-                    ...r,
-                    maxConsecutiveLosses: parseInt(e.target.value) || 1,
-                  }))
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Circuit breaker triggers after this many losses in a row
-              </p>
-            </div>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            The coach uses the greater of ATR-based and percentage-based stop loss for each trade.
+            No position limits, circuit breakers, or allocation caps — fully autonomous operation.
+          </p>
         </CardContent>
       </Card>
 

@@ -5,7 +5,7 @@
  */
 
 import { runBatchAnalysis, parseWatchSymbol } from '@/lib/coach/engine/coachEngine';
-import { DEFAULT_COACH_CONFIG } from '@/lib/coach/types';
+import { DEFAULT_COACH_CONFIG, INITIAL_COACH_BALANCE } from '@/lib/coach/types';
 import type { OHLCData, DailyReportMetrics } from '@/lib/coach/types';
 import type { AssetType, Market } from '@/types';
 import { getHistoricalData as getYahooHistorical } from '@/lib/api/yahoo-finance';
@@ -14,64 +14,59 @@ import { calculatePnL, checkStopLoss, checkTakeProfits } from '@/lib/coach/risk/
 import type { TakeProfitLevel } from '@/lib/coach/types';
 
 /**
- * Get portfolio state for risk assessment
+ * Get portfolio state for risk assessment.
+ * The coach has its own independent $100k paper trading balance,
+ * calculated from its own trade history (not the main portfolio).
  */
 export async function getPortfolioState(supabase: any, userId: string) {
-  const { data: balance } = await supabase
-    .from('balances')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  const availableCash = balance ? parseFloat(balance.available_cash) : 100000;
-  const totalInvested = balance ? parseFloat(balance.total_invested) : 0;
-  const totalValue = availableCash + totalInvested;
-
-  const { count: openPositions } = await supabase
-    .from('coach_paper_trade')
-    .select('*', { count: 'exact', head: true })
+  // Get all open trades to calculate capital in use
+  const { data: openTrades } = await (supabase
+    .from('coach_paper_trade') as any)
+    .select('size_usd')
     .eq('user_id', userId)
     .eq('status', 'open');
 
+  const openPositions = openTrades?.length || 0;
+  const capitalInUse = (openTrades || []).reduce(
+    (sum: number, t: any) => sum + parseFloat(t.size_usd || 0), 0
+  );
+
+  // Get total realized P&L from all closed trades
+  const { data: closedTrades } = await (supabase
+    .from('coach_paper_trade') as any)
+    .select('pnl_usd')
+    .eq('user_id', userId)
+    .not('pnl_usd', 'is', null);
+
+  const totalRealizedPnl = (closedTrades || []).reduce(
+    (sum: number, t: any) => sum + parseFloat(t.pnl_usd || 0), 0
+  );
+
+  // Coach's own balance: initial $100k + realized P&L - capital in open trades
+  const totalValue = INITIAL_COACH_BALANCE + totalRealizedPnl;
+  const availableCash = totalValue - capitalInUse;
+
+  // Today's P&L (for reporting, not for circuit breakers)
   const today = new Date().toISOString().split('T')[0];
-  const { data: todayTrades } = await supabase
-    .from('coach_paper_trade')
+  const { data: todayTrades } = await (supabase
+    .from('coach_paper_trade') as any)
     .select('pnl_usd')
     .eq('user_id', userId)
     .gte('closed_at', today)
     .not('pnl_usd', 'is', null);
 
-  const todayPnL = todayTrades
-    ? todayTrades.reduce((sum: number, t: any) => sum + parseFloat(t.pnl_usd || 0), 0)
-    : 0;
+  const todayPnL = (todayTrades || []).reduce(
+    (sum: number, t: any) => sum + parseFloat(t.pnl_usd || 0), 0
+  );
   const todayPnLPercent = totalValue > 0 ? (todayPnL / totalValue) * 100 : 0;
 
-  const { data: recentTrades } = await supabase
-    .from('coach_paper_trade')
-    .select('pnl_usd')
-    .eq('user_id', userId)
-    .not('pnl_usd', 'is', null)
-    .order('closed_at', { ascending: false })
-    .limit(10);
-
-  let consecutiveLosses = 0;
-  if (recentTrades) {
-    for (const trade of recentTrades) {
-      if (parseFloat(trade.pnl_usd) < 0) {
-        consecutiveLosses++;
-      } else {
-        break;
-      }
-    }
-  }
-
   return {
-    totalValue,
-    availableCash,
-    openPositions: openPositions || 0,
+    totalValue: Math.max(totalValue, 0),
+    availableCash: Math.max(availableCash, 0),
+    openPositions,
     todayPnL,
     todayPnLPercent,
-    consecutiveLosses,
+    consecutiveLosses: 0, // No longer tracked — no limits
   };
 }
 
@@ -222,8 +217,7 @@ export async function runAnalysisForUser(
       .single();
 
     if (signal.consensusAction !== 'HOLD' && signal.currentPrice && !signal.isStale) {
-      if (openPositionsCount >= config.riskParams.maxOpenPositions) continue;
-
+      // Skip if already have an open trade for this symbol
       const { data: existingTrade } = await (supabase.from('coach_paper_trade') as any)
         .select('id')
         .eq('user_id', userId)
@@ -233,8 +227,8 @@ export async function runAnalysisForUser(
 
       if (existingTrade) continue;
 
-      const maxAllocation = (portfolioState.totalValue * config.riskParams.maxAllocationPct) / 100;
-      const sizeUsd = Math.min(maxAllocation, portfolioState.availableCash);
+      // Size position using available cash (no allocation cap)
+      const sizeUsd = Math.min(portfolioState.availableCash, portfolioState.totalValue * 0.15);
       if (sizeUsd < 10) continue;
 
       const quantity = sizeUsd / signal.currentPrice;

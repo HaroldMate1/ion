@@ -135,11 +135,11 @@ export const DEFAULT_COACH_CONFIG: Omit<CoachConfig, 'userId'> = {
     priceAction: 0.45,
     news: 0.10,
   },
-  minConfidence: 0.45,
-  minConsensusScore: 0.10,
+  minConfidence: 0.35,
+  minConsensusScore: 0.05,
   riskParams: {
-    maxAllocationPct: 10.00,
-    maxOpenPositions: 4,
+    maxAllocationPct: 100.00,
+    maxOpenPositions: 100,
     useLeverage: false,
     stopLossStockPct: 2.50,
     stopLossCryptoPct: 6.00,
@@ -148,23 +148,31 @@ export const DEFAULT_COACH_CONFIG: Omit<CoachConfig, 'userId'> = {
     tp2Pct: 25.00,
     runnerPct: 25.00,
     trailingAtrMultiplier: 1.00,
-    dailyDrawdownLimitPct: 3.00,
-    maxConsecutiveLosses: 3,
+    dailyDrawdownLimitPct: 100.00,
+    maxConsecutiveLosses: 100,
   },
   watchSymbols: DEFAULT_WATCHLIST,
-  runCadenceMinutes: 0,
+  runCadenceMinutes: 15,
 };
 
+/** Initial paper trading balance for the coach */
+export const INITIAL_COACH_BALANCE = 100000;
+
 /**
- * Top 30 S&P 500 stocks by market cap + top 3 crypto as default watchlist
+ * Auto-discover universe: Top 50 S&P 500 + major ETFs + top crypto
  */
 export const DEFAULT_WATCHLIST: string[] = [
-  // Top 30 S&P 500 by market cap
+  // Top 50 S&P 500 by market cap
   'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'BRK.B', 'LLY', 'AVGO', 'TSLA',
   'JPM', 'WMT', 'V', 'UNH', 'XOM', 'MA', 'COST', 'JNJ', 'HD', 'PG',
   'ORCL', 'ABBV', 'BAC', 'CRM', 'NFLX', 'CVX', 'MRK', 'KO', 'AMD', 'PEP',
-  // Crypto
-  'BTC:crypto:us', 'ETH:crypto:us', 'SOL:crypto:us',
+  'ADBE', 'CSCO', 'TMO', 'INTC', 'DIS', 'ABT', 'QCOM', 'INTU', 'CMCSA', 'NKE',
+  'TXN', 'AMGN', 'PM', 'MS', 'RTX', 'NEE', 'ISRG', 'UBER', 'HON', 'LOW',
+  // Major sector ETFs
+  'SPY:etf:us', 'QQQ:etf:us', 'IWM:etf:us', 'XLF:etf:us', 'XLE:etf:us',
+  'XLK:etf:us', 'XLV:etf:us', 'ARKK:etf:us', 'GLD:etf:us', 'TLT:etf:us',
+  // Top crypto
+  'BTC:crypto:us', 'ETH:crypto:us', 'SOL:crypto:us', 'XRP:crypto:us', 'ADA:crypto:us',
 ];
 
 // ============================================================================
