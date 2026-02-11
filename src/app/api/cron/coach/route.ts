@@ -15,6 +15,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import {
   runAnalysisForUser,
   autoCloseTradesForUser,
+  generateDailyReportForUser,
   transformConfigRow,
 } from '@/lib/coach/autonomousRunner';
 
@@ -35,6 +36,7 @@ export async function GET(request: NextRequest) {
       userId: string;
       analysis: any;
       autoClose: any;
+      report?: any;
     }> = [];
 
     // Find all users with automation enabled (run_cadence_minutes > 0, kill_switch off)
@@ -89,16 +91,21 @@ export async function GET(request: NextRequest) {
         // Step 2: Run analysis and auto-execute new trades
         const analysisResult = await runAnalysisForUser(supabase, userId, configRow);
 
+        // Step 3: Auto-generate daily report with summary
+        const reportResult = await generateDailyReportForUser(supabase, userId);
+
         results.push({
           userId,
           analysis: analysisResult,
           autoClose: autoCloseResult,
+          report: reportResult,
         });
 
         console.log(
           `Processed user ${userId}: ` +
           `${analysisResult.skipped ? 'skipped' : `${analysisResult.signalsGenerated || 0} signals, ${analysisResult.autoExecutedTrades?.length || 0} trades`}, ` +
-          `${autoCloseResult.closed} trades closed`
+          `${autoCloseResult.closed} trades closed, ` +
+          `report: ${reportResult.skipped ? 'skipped' : 'generated'}`
         );
       } catch (userError) {
         console.error(`Error processing user ${userId}:`, userError);

@@ -250,6 +250,8 @@ export interface DailyReportMetrics {
   worstPerformers: { symbol: string; pnlPct: number }[];
   circuitBreakerTriggered: boolean;
   notes?: string;
+  summary?: string;
+  tradeRationales?: { symbol: string; action: string; rationale: string }[];
 }
 
 // ============================================================================

@@ -110,31 +110,37 @@ export async function POST(request: NextRequest) {
 
     const { data: signals } = await (supabase
       .from('coach_signal') as any)
-      .select('consensus_action')
+      .select('symbol, consensus_action, consensus_score, rationale, current_price')
       .eq('user_id', user.id)
       .gte('signal_ts', startOfDay)
       .lte('signal_ts', endOfDay);
 
-    // Count signals by action
+    // Count signals by action and collect rationales
     const signalsByAction = { BUY: 0, SELL: 0, HOLD: 0 };
+    const tradeRationales: { symbol: string; action: string; rationale: string }[] = [];
     for (const signal of signals || []) {
       const action = (signal as any).consensus_action as keyof typeof signalsByAction;
       if (signalsByAction[action] !== undefined) {
         signalsByAction[action]++;
       }
+      tradeRationales.push({
+        symbol: (signal as any).symbol,
+        action: (signal as any).consensus_action,
+        rationale: (signal as any).rationale || 'No rationale available',
+      });
     }
 
     // Get paper trades for the day
     const { data: openedTrades } = await (supabase
       .from('coach_paper_trade') as any)
-      .select('id')
+      .select('id, symbol, side, entry_price, size_usd')
       .eq('user_id', user.id)
       .gte('opened_at', startOfDay)
       .lte('opened_at', endOfDay);
 
     const { data: closedTrades } = await (supabase
       .from('coach_paper_trade') as any)
-      .select('pnl_usd, pnl_pct, symbol')
+      .select('pnl_usd, pnl_pct, symbol, side, entry_price, exit_price, notes')
       .eq('user_id', user.id)
       .gte('closed_at', startOfDay)
       .lte('closed_at', endOfDay);
@@ -200,6 +206,59 @@ export async function POST(request: NextRequest) {
     const dailyLimit = parseFloat((config as any)?.daily_drawdown_limit_pct || '3');
     const circuitBreakerTriggered = drawdownPct <= -dailyLimit;
 
+    // Build summary
+    const summaryParts: string[] = [];
+    const dateStr = new Date(reportDate).toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    });
+    summaryParts.push(`**Daily Market Report - ${dateStr}**`);
+    summaryParts.push(
+      `\nToday the coach analyzed ${(signals || []).length} symbol${(signals || []).length !== 1 ? 's' : ''} and generated ${signalsByAction.BUY} buy, ${signalsByAction.SELL} sell, and ${signalsByAction.HOLD} hold signal${signalsByAction.HOLD !== 1 ? 's' : ''}.`
+    );
+
+    if ((openedTrades || []).length > 0) {
+      const tradeList = (openedTrades || []).map((t: any) =>
+        `${t.side} ${t.symbol} at $${parseFloat(t.entry_price).toFixed(2)} ($${parseFloat(t.size_usd).toFixed(0)})`
+      ).join(', ');
+      summaryParts.push(`\n**Trades Executed:** ${tradeList}`);
+    }
+
+    if ((closedTrades || []).length > 0) {
+      const closeList = (closedTrades || []).map((t: any) => {
+        const pnl = parseFloat(t.pnl_usd || '0');
+        return `${t.symbol} ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+      }).join(', ');
+      summaryParts.push(`\n**Trades Closed:** ${closeList}`);
+      summaryParts.push(`Realized P&L: ${realizedPnl >= 0 ? '+' : ''}$${realizedPnl.toFixed(2)} | Win rate: ${winRate.toFixed(0)}%`);
+    }
+
+    const buyRationales = tradeRationales.filter(r => r.action === 'BUY');
+    const sellRationales = tradeRationales.filter(r => r.action === 'SELL');
+    const holdRationales = tradeRationales.filter(r => r.action === 'HOLD');
+
+    if (buyRationales.length > 0) {
+      summaryParts.push('\n**Why we bought:**');
+      for (const s of buyRationales.slice(0, 5)) {
+        summaryParts.push(`- **${s.symbol}**: ${s.rationale}`);
+      }
+    }
+    if (sellRationales.length > 0) {
+      summaryParts.push('\n**Why we sold:**');
+      for (const s of sellRationales.slice(0, 5)) {
+        summaryParts.push(`- **${s.symbol}**: ${s.rationale}`);
+      }
+    }
+    if (holdRationales.length > 0 && holdRationales.length <= 5) {
+      summaryParts.push('\n**Why we held:**');
+      for (const s of holdRationales) {
+        summaryParts.push(`- **${s.symbol}**: ${s.rationale}`);
+      }
+    } else if (holdRationales.length > 5) {
+      summaryParts.push(`\n**Hold signals:** ${holdRationales.length} symbols held — no strong conviction to enter or exit.`);
+    }
+
+    const summary = summaryParts.join('\n');
+
     const metrics: DailyReportMetrics = {
       signalsGenerated: signals?.length || 0,
       signalsByAction,
@@ -208,10 +267,12 @@ export async function POST(request: NextRequest) {
       realizedPnlUsd: Math.round(realizedPnl * 100) / 100,
       unrealizedPnlUsd: Math.round(unrealizedPnl * 100) / 100,
       winRate: Math.round(winRate * 100) / 100,
-      avgRiskReward: 0, // Would need to calculate from trades
+      avgRiskReward: 0,
       topPerformers,
       worstPerformers,
       circuitBreakerTriggered,
+      summary,
+      tradeRationales,
     };
 
     // Save report
