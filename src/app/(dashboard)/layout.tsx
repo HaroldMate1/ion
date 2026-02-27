@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { TrendingUp, LogOut, User, LayoutDashboard, ArrowLeftRight, History, Brain, Bot, Crown, BarChart3 } from 'lucide-react';
+import { TrendingUp, LogOut, User, LayoutDashboard, ArrowLeftRight, History, Brain, Bot, Crown, BarChart3, FlaskConical } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -144,26 +144,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Mobile Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t md:hidden z-50">
-        <div className="grid grid-cols-6 gap-0">
+        <div className="flex overflow-x-auto scrollbar-none">
           {[
-            { href: '/dashboard', icon: LayoutDashboard, label: 'Home' },
-            { href: '/trade', icon: ArrowLeftRight, label: 'Trade' },
-            { href: '/coach', icon: Brain, label: 'Coach' },
-            { href: '/llm-portfolios', icon: Bot, label: 'LLM' },
-            { href: '/expert-investors', icon: Crown, label: 'Experts' },
-            { href: '/benchmarks', icon: BarChart3, label: 'Bench' },
-          ].map(({ href, icon: Icon, label }) => {
-            const isActive = href === '/dashboard'
-              ? pathname === '/dashboard'
-              : pathname.startsWith(href);
+            { href: '/dashboard', icon: LayoutDashboard, label: 'Home', exact: true },
+            { href: '/trade', icon: ArrowLeftRight, label: 'Trade', exact: false },
+            { href: '/coach', icon: Brain, label: 'Coach', exact: false },
+            { href: '/coach/fine-tune', icon: FlaskConical, label: 'Fine-Tune', exact: false, purple: true },
+            { href: '/llm-portfolios', icon: Bot, label: 'LLM', exact: false },
+            { href: '/expert-investors', icon: Crown, label: 'Experts', exact: false },
+            { href: '/benchmarks', icon: BarChart3, label: 'Bench', exact: false },
+          ].map(({ href, icon: Icon, label, exact, purple }) => {
+            const isActive = exact
+              ? pathname === href
+              : pathname === href || (href !== '/coach' && pathname.startsWith(href));
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex flex-col items-center py-2 text-xs ${
+                className={`flex flex-col items-center py-2 px-3 text-xs min-w-[64px] flex-shrink-0 ${
                   isActive
-                    ? 'text-primary font-medium'
-                    : 'text-muted-foreground'
+                    ? purple ? 'text-purple-500 font-medium' : 'text-primary font-medium'
+                    : purple ? 'text-purple-400/70' : 'text-muted-foreground'
                 }`}
               >
                 <Icon className="h-5 w-5 mb-0.5" />

@@ -12,6 +12,7 @@ import {
   useCoachSummary,
   useCoachBalance,
   useCoachSignals,
+  useCoachTrades,
   useRunAnalysis,
   useToggleKillSwitch,
   useAcknowledgeSignal,
@@ -35,6 +36,8 @@ import {
   ScrollText,
   DollarSign,
   Wallet,
+  FlaskConical,
+  ArrowLeft,
 } from 'lucide-react';
 
 export default function CoachPage() {
@@ -42,6 +45,7 @@ export default function CoachPage() {
     useCoachSummary();
   const { data: balance } = useCoachBalance();
   const { data: signalsData, isLoading: signalsLoading } = useCoachSignals({ limit: 10 });
+  const { data: openTradesData, isLoading: openTradesLoading } = useCoachTrades({ status: 'open', limit: 50 });
   const runAnalysis = useRunAnalysis();
   const toggleKillSwitch = useToggleKillSwitch();
   const acknowledgeSignal = useAcknowledgeSignal();
@@ -113,29 +117,35 @@ export default function CoachPage() {
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
           <Link href="/coach/settings">
-            <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
-              <Settings className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Settings</span>
+            <Button variant="outline" size="sm" className="w-full text-xs">
+              <Settings className="h-4 w-4 mr-1.5 shrink-0" />
+              Settings
             </Button>
           </Link>
           <Link href="/coach/reports">
-            <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
-              <FileText className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Reports</span>
+            <Button variant="outline" size="sm" className="w-full text-xs">
+              <FileText className="h-4 w-4 mr-1.5 shrink-0" />
+              Reports
             </Button>
           </Link>
           <Link href="/coach/trades">
-            <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
-              <Briefcase className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Paper Trades</span>
+            <Button variant="outline" size="sm" className="w-full text-xs">
+              <Briefcase className="h-4 w-4 mr-1.5 shrink-0" />
+              <span className="hidden xs:inline">Paper </span>Trades
             </Button>
           </Link>
           <Link href="/coach/movements">
-            <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
-              <ScrollText className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Movements</span>
+            <Button variant="outline" size="sm" className="w-full text-xs">
+              <ScrollText className="h-4 w-4 mr-1.5 shrink-0" />
+              Movements
+            </Button>
+          </Link>
+          <Link href="/coach/fine-tune">
+            <Button variant="outline" size="sm" className="w-full text-xs border-purple-500/30 hover:bg-purple-500/10 col-span-1 sm:col-span-1">
+              <FlaskConical className="h-4 w-4 mr-1.5 shrink-0 text-purple-500" />
+              <span className="text-purple-400">Fine-Tune</span>
             </Button>
           </Link>
         </div>
@@ -297,6 +307,117 @@ export default function CoachPage() {
           </Button>
         )}
       </div>
+
+      {/* Fine-Tune Banner */}
+      <Link href="/coach/fine-tune">
+        <div className="flex items-center justify-between p-4 rounded-xl border-2 border-purple-500/30 bg-purple-500/5 hover:bg-purple-500/10 transition-colors cursor-pointer">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-purple-500/15">
+              <FlaskConical className="h-6 w-6 text-purple-500" />
+            </div>
+            <div>
+              <p className="font-semibold text-sm">Fine-Tuned Model</p>
+              <p className="text-xs text-muted-foreground">Backtest & optimize agent weights on historical data</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 hidden sm:flex" variant="outline">
+              Experimental
+            </Badge>
+            <ArrowLeft className="h-4 w-4 text-muted-foreground rotate-180" />
+          </div>
+        </div>
+      </Link>
+
+      {/* Current Positions (Portfolio View) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wallet className="h-5 w-5" />
+            Current Positions
+          </CardTitle>
+          <CardDescription>
+            Open trades shown as portfolio holdings — managed automatically by the coach
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {openTradesLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : !openTradesData?.trades?.length ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Wallet className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>No active positions</p>
+              <p className="text-sm">Run analysis to generate signals and auto-open trades.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Summary row */}
+              <div className="flex items-center justify-between text-sm font-medium text-muted-foreground border-b pb-2">
+                <span>{openTradesData.trades.length} Position{openTradesData.trades.length !== 1 ? 's' : ''}</span>
+                <span>
+                  Total Invested: $
+                  {openTradesData.trades
+                    .reduce((sum, t) => sum + (t.sizeUsd || 0), 0)
+                    .toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </span>
+              </div>
+              {/* Position rows */}
+              {openTradesData.trades.map((trade) => {
+                const pnl = trade.pnlUsd || 0;
+                const pnlPct = trade.pnlPct || 0;
+                return (
+                  <div
+                    key={trade.id}
+                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{trade.symbol}</span>
+                          <Badge
+                            className={`text-[10px] ${
+                              trade.side === 'BUY'
+                                ? 'bg-green-500/15 text-green-600 border-green-500/30'
+                                : 'bg-red-500/15 text-red-600 border-red-500/30'
+                            }`}
+                            variant="outline"
+                          >
+                            {trade.side}
+                          </Badge>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {trade.assetType}
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {Number(trade.quantity).toFixed(4)} units @ ${Number(trade.entryPrice).toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-medium">
+                        ${Number(trade.sizeUsd).toLocaleString('en-US', {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        })}
+                      </div>
+                      <div
+                        className={`text-xs font-medium ${
+                          pnl >= 0 ? 'text-green-500' : 'text-red-500'
+                        }`}
+                      >
+                        {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ({pnlPct >= 0 ? '+' : ''}
+                        {pnlPct.toFixed(2)}%)
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Recent Signals */}
       <Card>
