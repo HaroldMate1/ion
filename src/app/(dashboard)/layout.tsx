@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { TrendingUp, LogOut, User, LayoutDashboard, ArrowLeftRight, Cpu, Crown, BarChart3, Wand2 } from 'lucide-react';
+import { TrendingUp, LogOut, User, LayoutDashboard, ArrowLeftRight, Cpu, Crown, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -30,8 +30,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push('/');
   };
 
-  const isAIActive = pathname.startsWith('/coach') || pathname.startsWith('/llm-portfolios') || pathname === '/ai';
-  const isWizardActive = pathname.startsWith('/wizard');
+  const isAIActive = pathname.startsWith('/coach') || pathname.startsWith('/llm-portfolios') || pathname.startsWith('/wizard') || pathname === '/ai';
 
   if (loading) {
     return (
@@ -100,15 +99,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   Bench
                 </Button>
               </Link>
-              <Link href="/wizard">
-                <Button
-                  variant={isWizardActive ? 'default' : 'ghost'}
-                  size="sm"
-                >
-                  <Wand2 className="mr-2 h-4 w-4" />
-                  Wizard
-                </Button>
-              </Link>
             </nav>
 
             <div className="flex items-center space-x-4">
@@ -154,7 +144,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             { href: '/ai', icon: Cpu, label: 'AI', active: isAIActive },
             { href: '/expert-investors', icon: Crown, label: 'Expert', active: pathname.startsWith('/expert-investors') },
             { href: '/benchmarks', icon: BarChart3, label: 'Bench', active: pathname.startsWith('/benchmarks') },
-            { href: '/wizard', icon: Wand2, label: 'Wizard', active: isWizardActive },
           ].map(({ href, icon: Icon, label, active }) => (
             <Link
               key={href}
