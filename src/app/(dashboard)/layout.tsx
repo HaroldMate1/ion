@@ -16,12 +16,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { TrendingUp, LogOut, User, LayoutDashboard, ArrowLeftRight, History, Brain, Bot, Crown, BarChart3, FlaskConical } from 'lucide-react';
+import { TrendingUp, LogOut, User, LayoutDashboard, ArrowLeftRight, Cpu, Crown, BarChart3, Wand2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, profile, signOut, loading } = useAuth();
+  const { profile, signOut, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -29,6 +29,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     await signOut();
     router.push('/');
   };
+
+  const isAIActive = pathname.startsWith('/coach') || pathname.startsWith('/llm-portfolios') || pathname === '/ai';
+  const isWizardActive = pathname.startsWith('/wizard');
 
   if (loading) {
     return (
@@ -58,7 +61,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   size="sm"
                 >
                   <LayoutDashboard className="mr-2 h-4 w-4" />
-                  Dashboard
+                  Home
                 </Button>
               </Link>
               <Link href="/trade">
@@ -70,22 +73,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   Trade
                 </Button>
               </Link>
-              <Link href="/coach">
+              <Link href="/ai">
                 <Button
-                  variant={pathname.startsWith('/coach') ? 'default' : 'ghost'}
+                  variant={isAIActive ? 'default' : 'ghost'}
                   size="sm"
                 >
-                  <Brain className="mr-2 h-4 w-4" />
-                  Coach
-                </Button>
-              </Link>
-              <Link href="/llm-portfolios">
-                <Button
-                  variant={pathname.startsWith('/llm-portfolios') ? 'default' : 'ghost'}
-                  size="sm"
-                >
-                  <Bot className="mr-2 h-4 w-4" />
-                  LLM Portfolios
+                  <Cpu className="mr-2 h-4 w-4" />
+                  AI
                 </Button>
               </Link>
               <Link href="/expert-investors">
@@ -94,7 +88,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   size="sm"
                 >
                   <Crown className="mr-2 h-4 w-4" />
-                  Expert Investors
+                  Expert
                 </Button>
               </Link>
               <Link href="/benchmarks">
@@ -103,7 +97,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   size="sm"
                 >
                   <BarChart3 className="mr-2 h-4 w-4" />
-                  Benchmarks
+                  Bench
+                </Button>
+              </Link>
+              <Link href="/wizard">
+                <Button
+                  variant={isWizardActive ? 'default' : 'ghost'}
+                  size="sm"
+                >
+                  <Wand2 className="mr-2 h-4 w-4" />
+                  Wizard
                 </Button>
               </Link>
             </nav>
@@ -146,32 +149,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t md:hidden z-50">
         <div className="flex overflow-x-auto scrollbar-none">
           {[
-            { href: '/dashboard', icon: LayoutDashboard, label: 'Home', exact: true },
-            { href: '/trade', icon: ArrowLeftRight, label: 'Trade', exact: false },
-            { href: '/coach', icon: Brain, label: 'Coach', exact: false },
-            { href: '/coach/fine-tune', icon: FlaskConical, label: 'Fine-Tune', exact: false, purple: true },
-            { href: '/llm-portfolios', icon: Bot, label: 'LLM', exact: false },
-            { href: '/expert-investors', icon: Crown, label: 'Experts', exact: false },
-            { href: '/benchmarks', icon: BarChart3, label: 'Bench', exact: false },
-          ].map(({ href, icon: Icon, label, exact, purple }) => {
-            const isActive = exact
-              ? pathname === href
-              : pathname === href || (href !== '/coach' && pathname.startsWith(href));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`flex flex-col items-center py-2 px-3 text-xs min-w-[64px] flex-shrink-0 ${
-                  isActive
-                    ? purple ? 'text-purple-500 font-medium' : 'text-primary font-medium'
-                    : purple ? 'text-purple-400/70' : 'text-muted-foreground'
-                }`}
-              >
-                <Icon className="h-5 w-5 mb-0.5" />
-                {label}
-              </Link>
-            );
-          })}
+            { href: '/dashboard', icon: LayoutDashboard, label: 'Home', active: pathname === '/dashboard' },
+            { href: '/trade', icon: ArrowLeftRight, label: 'Trade', active: pathname === '/trade' },
+            { href: '/ai', icon: Cpu, label: 'AI', active: isAIActive },
+            { href: '/expert-investors', icon: Crown, label: 'Expert', active: pathname.startsWith('/expert-investors') },
+            { href: '/benchmarks', icon: BarChart3, label: 'Bench', active: pathname.startsWith('/benchmarks') },
+            { href: '/wizard', icon: Wand2, label: 'Wizard', active: isWizardActive },
+          ].map(({ href, icon: Icon, label, active }) => (
+            <Link
+              key={href}
+              href={href}
+              className={`flex flex-col items-center py-2 px-3 text-xs min-w-[64px] flex-shrink-0 ${
+                active ? 'text-primary font-medium' : 'text-muted-foreground'
+              }`}
+            >
+              <Icon className="h-5 w-5 mb-0.5" />
+              {label}
+            </Link>
+          ))}
         </div>
       </nav>
     </div>
