@@ -2,20 +2,24 @@
 
 /**
  * Fine-Tuned Model Page
- * Backtest the AI trading coach on historical data to find optimal agent weights.
- * Uses grid search across weight combinations, runs agents on past OHLC data,
- * and simulates trades to find the best risk-adjusted configuration.
+ * Backtest the AI trading coach on historical data to find optimal agent weights,
+ * then apply those weights to an independent $100,000 Fine-Tune portfolio that
+ * trades completely separately from the Coach portfolio.
  */
 
 import { useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { useUpdateCoachConfig } from '@/hooks/use-coach';
+import {
+  useFineTuneConfig,
+  useFineTuneBalance,
+  useFineTuneTrades,
+  useApplyFineTuneWeights,
+  useRunFineTuneAnalysis,
+} from '@/hooks/use-fine-tune-portfolio';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -23,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import {
   ArrowLeft,
   FlaskConical,
@@ -34,9 +39,13 @@ import {
   Target,
   CheckCircle2,
   AlertTriangle,
+  Wallet,
+  Play,
+  DollarSign,
+  Percent,
 } from 'lucide-react';
 
-// Default symbols to test
+// ── Preset symbols available for backtesting ──────────────────────────────────
 const PRESET_SYMBOLS = [
   { symbol: 'AAPL', assetType: 'stock' as const, market: 'us' as const, label: 'Apple' },
   { symbol: 'MSFT', assetType: 'stock' as const, market: 'us' as const, label: 'Microsoft' },
@@ -45,24 +54,14 @@ const PRESET_SYMBOLS = [
   { symbol: 'TSLA', assetType: 'stock' as const, market: 'us' as const, label: 'Tesla' },
   { symbol: 'NVDA', assetType: 'stock' as const, market: 'us' as const, label: 'NVIDIA' },
   { symbol: 'META', assetType: 'stock' as const, market: 'us' as const, label: 'Meta' },
-  { symbol: 'JPM', assetType: 'stock' as const, market: 'us' as const, label: 'JPMorgan' },
-  { symbol: 'SPY', assetType: 'etf' as const, market: 'us' as const, label: 'S&P 500 ETF' },
-  { symbol: 'QQQ', assetType: 'etf' as const, market: 'us' as const, label: 'Nasdaq ETF' },
-  { symbol: 'BTC', assetType: 'crypto' as const, market: 'us' as const, label: 'Bitcoin' },
-  { symbol: 'ETH', assetType: 'crypto' as const, market: 'us' as const, label: 'Ethereum' },
+  { symbol: 'JPM',  assetType: 'stock' as const, market: 'us' as const, label: 'JPMorgan' },
+  { symbol: 'SPY',  assetType: 'etf'   as const, market: 'us' as const, label: 'S&P 500 ETF' },
+  { symbol: 'QQQ',  assetType: 'etf'   as const, market: 'us' as const, label: 'Nasdaq ETF' },
+  { symbol: 'BTC',  assetType: 'crypto' as const, market: 'us' as const, label: 'Bitcoin' },
+  { symbol: 'ETH',  assetType: 'crypto' as const, market: 'us' as const, label: 'Ethereum' },
 ];
 
-interface BacktestResult {
-  symbol: string;
-  assetType: string;
-  totalBars: number;
-  signalBars: number;
-  bestWeights: WeightResult;
-  defaultWeights: WeightResult;
-  improvement: number;
-  allResults: WeightResult[];
-}
-
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface WeightResult {
   weights: { indicator: number; priceAction: number; news: number };
   totalReturn: number;
@@ -77,6 +76,17 @@ interface WeightResult {
   equityCurve: Array<{ date: number; equity: number }>;
 }
 
+interface BacktestResult {
+  symbol: string;
+  assetType: string;
+  totalBars: number;
+  signalBars: number;
+  bestWeights: WeightResult;
+  defaultWeights: WeightResult;
+  improvement: number;
+  allResults: WeightResult[];
+}
+
 interface OptimizationResult {
   results: BacktestResult[];
   aggregatedBest: { indicator: number; priceAction: number; news: number };
@@ -87,33 +97,34 @@ interface OptimizationResult {
   errors?: string[];
 }
 
+// ── Page ──────────────────────────────────────────────────────────────────────
 export default function FineTunePage() {
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>(
     ['AAPL', 'MSFT', 'GOOGL', 'SPY', 'BTC']
   );
   const [lookbackDays, setLookbackDays] = useState('180');
-  const [weightStep, setWeightStep] = useState('0.05');
-  const [isRunning, setIsRunning] = useState(false);
-  const [result, setResult] = useState<OptimizationResult | null>(null);
-  const updateConfig = useUpdateCoachConfig();
+  const [weightStep, setWeightStep]     = useState('0.05');
+  const [isRunning, setIsRunning]       = useState(false);
+  const [result, setResult]             = useState<OptimizationResult | null>(null);
+
+  // Portfolio hooks
+  const { data: config }              = useFineTuneConfig();
+  const { data: balance, isLoading: balanceLoading } = useFineTuneBalance();
+  const { data: tradesData }          = useFineTuneTrades();
+  const applyWeights                  = useApplyFineTuneWeights();
+  const runAnalysis                   = useRunFineTuneAnalysis();
+  const trades: any[]                 = tradesData?.trades || [];
 
   const toggleSymbol = (symbol: string) => {
     setSelectedSymbols(prev =>
-      prev.includes(symbol)
-        ? prev.filter(s => s !== symbol)
-        : [...prev, symbol]
+      prev.includes(symbol) ? prev.filter(s => s !== symbol) : [...prev, symbol]
     );
   };
 
   const handleRunOptimization = async () => {
-    if (selectedSymbols.length === 0) {
-      toast.error('Select at least one symbol');
-      return;
-    }
-
+    if (selectedSymbols.length === 0) { toast.error('Select at least one symbol'); return; }
     setIsRunning(true);
     setResult(null);
-
     try {
       const symbols = selectedSymbols.map(sym => {
         const preset = PRESET_SYMBOLS.find(p => p.symbol === sym);
@@ -121,34 +132,20 @@ export default function FineTunePage() {
           ? { symbol: preset.symbol, assetType: preset.assetType, market: preset.market }
           : { symbol: sym, assetType: 'stock' as const, market: 'us' as const };
       });
-
       const response = await fetch('/api/coach/optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          symbols,
-          lookbackDays: parseInt(lookbackDays),
-          weightStep: parseFloat(weightStep),
-        }),
+        body: JSON.stringify({ symbols, lookbackDays: parseInt(lookbackDays), weightStep: parseFloat(weightStep) }),
       });
-
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Optimization failed');
       }
-
       const data: OptimizationResult = await response.json();
       setResult(data);
-
-      if (data.errors && data.errors.length > 0) {
-        data.errors.forEach(err => toast.warning(err));
-      }
-
-      toast.success(
-        `Optimization complete! Found ${data.improvementPct >= 0 ? '+' : ''}${data.improvementPct.toFixed(1)}% improvement`
-      );
+      if (data.errors?.length) data.errors.forEach(err => toast.warning(err));
+      toast.success(`Optimization complete! ${data.improvementPct >= 0 ? '+' : ''}${data.improvementPct.toFixed(1)}% improvement found`);
     } catch (error: any) {
-      console.error('Optimization error:', error);
       toast.error(error.message || 'Failed to run optimization');
     } finally {
       setIsRunning(false);
@@ -157,22 +154,32 @@ export default function FineTunePage() {
 
   const handleApplyWeights = async () => {
     if (!result) return;
-
     try {
-      await updateConfig.mutateAsync({
-        weights: result.aggregatedBest,
-      });
-      toast.success('Optimized weights applied to your coach configuration!');
+      await applyWeights.mutateAsync(result.aggregatedBest);
+      toast.success('Optimized weights applied to Fine-Tune portfolio!');
     } catch (error: any) {
       toast.error(error.message || 'Failed to apply weights');
     }
   };
 
+  const handleRunAnalysis = async () => {
+    try {
+      const data = await runAnalysis.mutateAsync();
+      toast.success(
+        `Analysis complete: ${data.tradesExecuted} trade(s) executed across ${data.signalsGenerated} signals`
+      );
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to run analysis');
+    }
+  };
+
+  const ret = balance?.totalReturnPct ?? 0;
+
   return (
     <div className="container mx-auto py-4 sm:py-6 space-y-4 sm:space-y-6 px-2 sm:px-0">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/coach">
+        <Link href="/ai">
           <Button variant="ghost" size="icon" className="shrink-0">
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -186,12 +193,142 @@ export default function FineTunePage() {
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Backtest on historical data to find optimal agent weights for the trading coach
+            Backtest to find optimal weights, then run an independent $100k portfolio — separate from the Coach
           </p>
         </div>
       </div>
 
-      {/* How It Works */}
+      {/* ── Fine-Tune Portfolio Dashboard ────────────────────────────────── */}
+      <Card className="border-purple-500/30">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <Wallet className="h-5 w-5 text-purple-500" />
+            Fine-Tune Portfolio
+            {(balance?.openPositions ?? 0) > 0 && (
+              <Badge variant="outline" className="text-blue-500 border-blue-300">
+                {balance.openPositions} open
+              </Badge>
+            )}
+          </CardTitle>
+          <CardDescription>
+            Independent $100,000 paper portfolio — trades using your fine-tuned weights, never affects the Coach
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {balanceLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <>
+              {/* Stats row */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3 rounded-lg bg-muted/50 space-y-0.5">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Wallet className="h-3 w-3" /> Total Value
+                  </p>
+                  <p className="text-lg font-bold">
+                    ${(balance?.totalValue ?? 100000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 space-y-0.5">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <DollarSign className="h-3 w-3" /> Available Cash
+                  </p>
+                  <p className="text-lg font-bold">
+                    ${(balance?.availableCash ?? 100000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 space-y-0.5">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Percent className="h-3 w-3" /> Total Return
+                  </p>
+                  <p className={`text-lg font-bold ${ret >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {ret >= 0 ? '+' : ''}{ret.toFixed(2)}%
+                  </p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 space-y-0.5">
+                  <p className="text-xs text-muted-foreground">Open Positions</p>
+                  <p className="text-lg font-bold">{balance?.openPositions ?? 0}</p>
+                </div>
+              </div>
+
+              {/* Active weights */}
+              {config?.isActive && (
+                <div className="p-3 rounded-lg bg-purple-500/5 border border-purple-500/20 text-sm flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span className="text-xs text-muted-foreground font-medium">Active weights:</span>
+                  <span>Indicator <strong>{((config.weights.indicator ?? 0.45) * 100).toFixed(0)}%</strong></span>
+                  <span>Price Action <strong>{((config.weights.priceAction ?? 0.45) * 100).toFixed(0)}%</strong></span>
+                  <span>News <strong>{((config.weights.news ?? 0.10) * 100).toFixed(0)}%</strong></span>
+                  {config.lastAppliedAt && (
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      Applied {new Date(config.lastAppliedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {!config?.isActive && (
+                <p className="text-sm text-muted-foreground text-center py-2">
+                  Run a backtest below and apply the optimized weights to activate the portfolio.
+                </p>
+              )}
+
+              {/* Run Analysis button */}
+              <Button
+                onClick={handleRunAnalysis}
+                disabled={runAnalysis.isPending || !config?.isActive}
+                className="w-full bg-purple-600 hover:bg-purple-700"
+              >
+                {runAnalysis.isPending ? (
+                  <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Running Analysis…</>
+                ) : (
+                  <><Play className="h-4 w-4 mr-2" />Run Live Analysis</>
+                )}
+              </Button>
+
+              {/* Recent trades */}
+              {trades.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Recent Trades ({balance?.totalTrades ?? 0} total)</p>
+                  <div className="space-y-1.5">
+                    {trades.slice(0, 6).map((t: any) => (
+                      <div
+                        key={t.id}
+                        className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 border text-sm"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Badge
+                            variant={t.side === 'BUY' ? 'default' : 'destructive'}
+                            className="text-[10px] shrink-0"
+                          >
+                            {t.side}
+                          </Badge>
+                          <span className="font-semibold">{t.symbol}</span>
+                          <span className="text-xs text-muted-foreground hidden sm:inline">
+                            ${Number(t.size_usd).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </span>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          {t.status === 'open' ? (
+                            <Badge variant="outline" className="text-blue-500 text-[10px]">Open</Badge>
+                          ) : (
+                            <span className={`font-medium text-sm ${Number(t.pnl_usd) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              {Number(t.pnl_usd) >= 0 ? '+' : ''}${Number(t.pnl_usd || 0).toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── How It Works ─────────────────────────────────────────────────── */}
       <Card className="border-purple-500/20 bg-purple-500/5">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
@@ -201,48 +338,31 @@ export default function FineTunePage() {
         </CardHeader>
         <CardContent>
           <div className="grid sm:grid-cols-4 gap-4 text-sm">
-            <div className="flex items-start gap-2">
-              <span className="font-bold text-purple-400 text-lg">1</span>
-              <div>
-                <p className="font-medium">Fetch History</p>
-                <p className="text-muted-foreground text-xs">Get 180 days of OHLC data for each selected symbol</p>
+            {[
+              { n: 1, title: 'Fetch History', desc: 'Get 180 days of OHLC data for each selected symbol' },
+              { n: 2, title: 'Run Agents', desc: 'Run Indicator + PriceAction agents on each historical day' },
+              { n: 3, title: 'Grid Search', desc: 'Test 100+ weight combinations on Nash consensus' },
+              { n: 4, title: 'Apply & Trade', desc: 'Apply optimal weights to your Fine-Tune portfolio — Coach stays unchanged' },
+            ].map(({ n, title, desc }) => (
+              <div key={n} className="flex items-start gap-2">
+                <span className="font-bold text-purple-400 text-lg">{n}</span>
+                <div>
+                  <p className="font-medium">{title}</p>
+                  <p className="text-muted-foreground text-xs">{desc}</p>
+                </div>
               </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="font-bold text-purple-400 text-lg">2</span>
-              <div>
-                <p className="font-medium">Run Agents</p>
-                <p className="text-muted-foreground text-xs">Run Indicator + PriceAction agents on each historical day</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="font-bold text-purple-400 text-lg">3</span>
-              <div>
-                <p className="font-medium">Grid Search</p>
-                <p className="text-muted-foreground text-xs">Test 100+ weight combinations on Nash consensus</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="font-bold text-purple-400 text-lg">4</span>
-              <div>
-                <p className="font-medium">Find Best</p>
-                <p className="text-muted-foreground text-xs">Rank by Sharpe ratio to find risk-adjusted optimal weights</p>
-              </div>
-            </div>
+            ))}
           </div>
         </CardContent>
       </Card>
 
-      {/* Configuration */}
+      {/* ── Configuration ─────────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle>Configuration</CardTitle>
-          <CardDescription>
-            Select symbols and parameters for the backtest
-          </CardDescription>
+          <CardTitle>Backtest Configuration</CardTitle>
+          <CardDescription>Select symbols and parameters for the optimization</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Symbol Selection */}
           <div>
             <Label className="mb-3 block">Symbols to Test</Label>
             <div className="flex flex-wrap gap-2">
@@ -268,14 +388,11 @@ export default function FineTunePage() {
             </p>
           </div>
 
-          {/* Parameters */}
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="lookback">Lookback Period</Label>
               <Select value={lookbackDays} onValueChange={setLookbackDays}>
-                <SelectTrigger id="lookback">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger id="lookback"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="90">90 days (3 months)</SelectItem>
                   <SelectItem value="180">180 days (6 months)</SelectItem>
@@ -286,9 +403,7 @@ export default function FineTunePage() {
             <div>
               <Label htmlFor="step">Weight Granularity</Label>
               <Select value={weightStep} onValueChange={setWeightStep}>
-                <SelectTrigger id="step">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger id="step"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="0.10">10% steps (fast, ~30 combos)</SelectItem>
                   <SelectItem value="0.05">5% steps (balanced, ~100 combos)</SelectItem>
@@ -304,24 +419,17 @@ export default function FineTunePage() {
             size="lg"
           >
             {isRunning ? (
-              <>
-                <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
-                Running Optimization... This may take 1-2 minutes
-              </>
+              <><RefreshCw className="h-5 w-5 mr-2 animate-spin" />Running Optimization… (1-2 min)</>
             ) : (
-              <>
-                <FlaskConical className="h-5 w-5 mr-2" />
-                Run Backtest & Optimize Weights
-              </>
+              <><FlaskConical className="h-5 w-5 mr-2" />Run Backtest & Optimize Weights</>
             )}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Results */}
+      {/* ── Results ───────────────────────────────────────────────────────── */}
       {result && (
         <>
-          {/* Aggregated Result */}
           <Card className="border-2 border-purple-500/30">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -329,17 +437,18 @@ export default function FineTunePage() {
                 Optimization Result
               </CardTitle>
               <CardDescription>
-                Tested across {result.results.length} symbol{result.results.length !== 1 ? 's' : ''} — {result.timestamp && new Date(result.timestamp).toLocaleString()}
+                Tested across {result.results.length} symbol{result.results.length !== 1 ? 's' : ''} —{' '}
+                {result.timestamp && new Date(result.timestamp).toLocaleString()}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Weight Comparison */}
+              {/* Weight comparison */}
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="p-4 rounded-lg border bg-muted/30">
                   <p className="text-sm font-medium text-muted-foreground mb-3">Default Weights</p>
-                  <WeightBar label="Indicator" value={0.45} color="bg-blue-500" />
+                  <WeightBar label="Indicator"    value={0.45} color="bg-blue-500" />
                   <WeightBar label="Price Action" value={0.45} color="bg-amber-500" />
-                  <WeightBar label="News" value={0.10} color="bg-green-500" />
+                  <WeightBar label="News"         value={0.10} color="bg-green-500" />
                   <div className="mt-3 pt-3 border-t">
                     <p className="text-sm text-muted-foreground">Avg Return</p>
                     <p className={`text-xl font-bold ${result.aggregatedDefaultReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
@@ -349,12 +458,10 @@ export default function FineTunePage() {
                 </div>
 
                 <div className="p-4 rounded-lg border-2 border-purple-500/50 bg-purple-500/5">
-                  <p className="text-sm font-medium text-purple-400 mb-3">
-                    ✨ Optimized Weights
-                  </p>
-                  <WeightBar label="Indicator" value={result.aggregatedBest.indicator} color="bg-blue-500" />
+                  <p className="text-sm font-medium text-purple-400 mb-3">✨ Optimized Weights</p>
+                  <WeightBar label="Indicator"    value={result.aggregatedBest.indicator}   color="bg-blue-500" />
                   <WeightBar label="Price Action" value={result.aggregatedBest.priceAction} color="bg-amber-500" />
-                  <WeightBar label="News" value={result.aggregatedBest.news} color="bg-green-500" />
+                  <WeightBar label="News"         value={result.aggregatedBest.news}        color="bg-green-500" />
                   <div className="mt-3 pt-3 border-t border-purple-500/20">
                     <p className="text-sm text-muted-foreground">Avg Return</p>
                     <p className={`text-xl font-bold ${result.aggregatedBestReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
@@ -364,7 +471,7 @@ export default function FineTunePage() {
                 </div>
               </div>
 
-              {/* Improvement Banner */}
+              {/* Apply banner */}
               <div className={`p-4 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
                 result.improvementPct >= 0
                   ? 'bg-green-500/10 border border-green-500/30'
@@ -391,33 +498,31 @@ export default function FineTunePage() {
 
                 <Button
                   onClick={handleApplyWeights}
-                  disabled={updateConfig.isPending}
-                  className="bg-purple-600 hover:bg-purple-700 w-full sm:w-auto"
+                  disabled={applyWeights.isPending}
+                  className="bg-purple-600 hover:bg-purple-700 w-full sm:w-auto shrink-0"
                 >
-                  {updateConfig.isPending ? (
+                  {applyWeights.isPending ? (
                     <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
                     <CheckCircle2 className="h-4 w-4 mr-2" />
                   )}
-                  Apply to Coach
+                  Apply to Fine-Tune Portfolio
                 </Button>
               </div>
             </CardContent>
           </Card>
 
-          {/* Per-Symbol Results */}
+          {/* Per-symbol breakdown */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5" />
                 Per-Symbol Breakdown
               </CardTitle>
-              <CardDescription>
-                Performance comparison for each backtested symbol
-              </CardDescription>
+              <CardDescription>Performance comparison for each backtested symbol</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Mobile: card layout */}
+              {/* Mobile */}
               <div className="space-y-3 md:hidden">
                 {result.results.map((r) => (
                   <div key={r.symbol} className="p-3 rounded-lg border bg-muted/20 space-y-2">
@@ -445,17 +550,19 @@ export default function FineTunePage() {
                       </div>
                       <div>
                         <p className="text-muted-foreground">Sharpe / Win%</p>
-                        <p className="font-medium">{r.bestWeights.sharpeRatio.toFixed(2)} / {r.bestWeights.winRate.toFixed(0)}%</p>
+                        <p className="font-medium">
+                          {r.bestWeights.sharpeRatio.toFixed(2)} / {r.bestWeights.winRate.toFixed(0)}%
+                        </p>
                       </div>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Best weights: Ind {(r.bestWeights.weights.indicator * 100).toFixed(0)}% / PA {(r.bestWeights.weights.priceAction * 100).toFixed(0)}% / News {(r.bestWeights.weights.news * 100).toFixed(0)}%
+                      Best: Ind {(r.bestWeights.weights.indicator * 100).toFixed(0)}% / PA {(r.bestWeights.weights.priceAction * 100).toFixed(0)}% / News {(r.bestWeights.weights.news * 100).toFixed(0)}%
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Desktop: table layout */}
+              {/* Desktop */}
               <div className="hidden md:block space-y-3">
                 <div className="grid grid-cols-8 gap-2 text-xs font-medium text-muted-foreground border-b pb-2">
                   <div className="col-span-2">Symbol</div>
@@ -464,7 +571,7 @@ export default function FineTunePage() {
                   <div className="text-right">Improvement</div>
                   <div className="text-right">Sharpe</div>
                   <div className="text-right">Win Rate</div>
-                  <div className="text-right">Weights</div>
+                  <div className="text-right">Weights (I/PA/N)</div>
                 </div>
                 {result.results.map((r) => (
                   <div
@@ -497,7 +604,7 @@ export default function FineTunePage() {
             </CardContent>
           </Card>
 
-          {/* Equity Curves (using first symbol as example) */}
+          {/* Equity curve */}
           {result.results.length > 0 && result.results[0].bestWeights.equityCurve.length > 0 && (
             <Card>
               <CardHeader>
@@ -526,9 +633,7 @@ export default function FineTunePage() {
               </CardHeader>
               <CardContent>
                 <ul className="text-sm text-muted-foreground space-y-1">
-                  {result.errors.map((err, i) => (
-                    <li key={i}>• {err}</li>
-                  ))}
+                  {result.errors.map((err, i) => <li key={i}>• {err}</li>)}
                 </ul>
               </CardContent>
             </Card>
@@ -539,23 +644,16 @@ export default function FineTunePage() {
   );
 }
 
-// ============================================================================
-// Sub-components
-// ============================================================================
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function WeightBar({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div className="flex items-center gap-3 mb-2">
       <span className="text-xs w-24 text-muted-foreground">{label}</span>
       <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
-        <div
-          className={`h-full ${color} rounded-full transition-all`}
-          style={{ width: `${value * 100}%` }}
-        />
+        <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${value * 100}%` }} />
       </div>
-      <span className="text-sm font-mono font-medium w-12 text-right">
-        {(value * 100).toFixed(0)}%
-      </span>
+      <span className="text-sm font-mono font-medium w-12 text-right">{(value * 100).toFixed(0)}%</span>
     </div>
   );
 }
@@ -573,57 +671,31 @@ function MiniEquityCurve({
   const minEquity = Math.min(...allEquities);
   const maxEquity = Math.max(...allEquities);
   const range = maxEquity - minEquity || 1;
+  const W = 800, H = 200, P = 20;
 
-  const width = 800;
-  const height = 200;
-  const padding = 20;
-
-  const toPath = (curve: typeof defaultCurve) => {
-    if (curve.length === 0) return '';
-    return curve.map((p, i) => {
-      const x = padding + (i / (curve.length - 1)) * (width - 2 * padding);
-      const y = height - padding - ((p.equity - minEquity) / range) * (height - 2 * padding);
+  const toPath = (curve: typeof defaultCurve) =>
+    curve.length === 0 ? '' : curve.map((p, i) => {
+      const x = P + (i / (curve.length - 1)) * (W - 2 * P);
+      const y = H - P - ((p.equity - minEquity) / range) * (H - 2 * P);
       return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
     }).join(' ');
-  };
+
+  const baselineY = H - P - ((100000 - minEquity) / range) * (H - 2 * P);
 
   return (
     <div className="w-full overflow-x-auto">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" style={{ minWidth: 400 }}>
-        {/* Grid lines */}
-        <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="currentColor" opacity={0.1} />
-        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="currentColor" opacity={0.1} />
-
-        {/* $100k baseline */}
-        {(() => {
-          const y = height - padding - ((100000 - minEquity) / range) * (height - 2 * padding);
-          return (
-            <line
-              x1={padding} y1={y} x2={width - padding} y2={y}
-              stroke="currentColor" opacity={0.2} strokeDasharray="4 4"
-            />
-          );
-        })()}
-
-        {/* Default curve */}
-        <path d={toPath(defaultCurve)} fill="none" stroke="#6b7280" strokeWidth={2} opacity={0.6} />
-
-        {/* Optimized curve */}
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" style={{ minWidth: 400 }}>
+        <line x1={P} y1={P} x2={P} y2={H - P} stroke="currentColor" opacity={0.1} />
+        <line x1={P} y1={H - P} x2={W - P} y2={H - P} stroke="currentColor" opacity={0.1} />
+        <line x1={P} y1={baselineY} x2={W - P} y2={baselineY} stroke="currentColor" opacity={0.2} strokeDasharray="4 4" />
+        <path d={toPath(defaultCurve)}   fill="none" stroke="#6b7280" strokeWidth={2} opacity={0.6} />
         <path d={toPath(optimizedCurve)} fill="none" stroke="#a855f7" strokeWidth={2.5} />
-
-        {/* Legend */}
-        <line x1={width - 200} y1={15} x2={width - 180} y2={15} stroke="#6b7280" strokeWidth={2} opacity={0.6} />
-        <text x={width - 175} y={19} fill="currentColor" fontSize={11} opacity={0.6}>Default</text>
-        <line x1={width - 110} y1={15} x2={width - 90} y2={15} stroke="#a855f7" strokeWidth={2.5} />
-        <text x={width - 85} y={19} fill="#a855f7" fontSize={11}>Optimized</text>
-
-        {/* Y-axis labels */}
-        <text x={padding - 5} y={padding + 5} fill="currentColor" fontSize={10} textAnchor="end" opacity={0.5}>
-          ${(maxEquity / 1000).toFixed(0)}k
-        </text>
-        <text x={padding - 5} y={height - padding + 5} fill="currentColor" fontSize={10} textAnchor="end" opacity={0.5}>
-          ${(minEquity / 1000).toFixed(0)}k
-        </text>
+        <line x1={W - 200} y1={15} x2={W - 180} y2={15} stroke="#6b7280" strokeWidth={2} opacity={0.6} />
+        <text x={W - 175} y={19} fill="currentColor" fontSize={11} opacity={0.6}>Default</text>
+        <line x1={W - 110} y1={15} x2={W - 90}  y2={15} stroke="#a855f7" strokeWidth={2.5} />
+        <text x={W - 85}  y={19} fill="#a855f7"  fontSize={11}>Optimized</text>
+        <text x={P - 5} y={P + 5}      fill="currentColor" fontSize={10} textAnchor="end" opacity={0.5}>${(maxEquity / 1000).toFixed(0)}k</text>
+        <text x={P - 5} y={H - P + 5}  fill="currentColor" fontSize={10} textAnchor="end" opacity={0.5}>${(minEquity / 1000).toFixed(0)}k</text>
       </svg>
     </div>
   );
