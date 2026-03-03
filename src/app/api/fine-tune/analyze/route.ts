@@ -7,7 +7,8 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { runBatchAnalysis, parseWatchSymbol, fetchMarketData } from '@/lib/coach/autonomousRunner';
+import { runBatchAnalysis, parseWatchSymbol } from '@/lib/coach/engine/coachEngine';
+import { fetchMarketData } from '@/lib/coach/autonomousRunner';
 import { DEFAULT_COACH_CONFIG } from '@/lib/coach/types';
 import YahooFinance from 'yahoo-finance2';
 
