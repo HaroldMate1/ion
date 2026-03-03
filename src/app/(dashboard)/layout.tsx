@@ -137,7 +137,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Mobile Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t md:hidden z-50">
-        <div className="flex overflow-x-auto scrollbar-none">
+        <div className="flex w-full">
           {[
             { href: '/dashboard', icon: LayoutDashboard, label: 'Home', active: pathname === '/dashboard' },
             { href: '/trade', icon: ArrowLeftRight, label: 'Trade', active: pathname === '/trade' },
@@ -148,11 +148,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               key={href}
               href={href}
-              className={`flex flex-col items-center py-2 px-3 text-xs min-w-[64px] flex-shrink-0 ${
-                active ? 'text-primary font-medium' : 'text-muted-foreground'
+              className={`flex flex-1 flex-col items-center justify-center py-3 text-[11px] font-medium gap-1 ${
+                active ? 'text-primary' : 'text-muted-foreground'
               }`}
             >
-              <Icon className="h-5 w-5 mb-0.5" />
+              <Icon className="h-6 w-6" />
               {label}
             </Link>
           ))}
