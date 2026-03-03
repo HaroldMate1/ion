@@ -15,10 +15,14 @@ import YahooFinance from 'yahoo-finance2';
 const yf = new YahooFinance();
 const INITIAL_BALANCE = 100_000;
 
-// Same preset symbols as the backtest page
+// Pharma/biotech universe for live trading
 const FINE_TUNE_WATCH = [
-  'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'META', 'JPM',
-  'SPY:etf:us', 'QQQ:etf:us', 'BTC:crypto:us', 'ETH:crypto:us',
+  // US Large-Cap Pharma
+  'JNJ', 'PFE', 'MRK', 'ABBV', 'LLY', 'BMY',
+  // US Biotech
+  'AMGN', 'GILD', 'REGN', 'VRTX', 'BIIB', 'MRNA', 'BNTX', 'INCY', 'ALNY',
+  // International Pharma (US-listed ADRs)
+  'AZN', 'NVO', 'GSK', 'SNY', 'NVS',
 ];
 
 export async function POST() {

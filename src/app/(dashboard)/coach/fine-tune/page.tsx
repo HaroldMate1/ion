@@ -1,10 +1,10 @@
 'use client';
 
 /**
- * Fine-Tuned Model Page
- * Backtest the AI trading coach on historical data to find optimal agent weights,
- * then apply those weights to an independent $100,000 Fine-Tune portfolio that
- * trades completely separately from the Coach portfolio.
+ * Fine-Tuned Model Page — Pharma Specialization
+ * Backtest the AI trading coach on pharma/biotech historical data to find optimal
+ * agent weights, then apply those weights to an independent $100,000 Fine-Tune
+ * portfolio that trades pharma stocks completely separately from the Coach.
  */
 
 import { useState } from 'react';
@@ -45,20 +45,31 @@ import {
   Percent,
 } from 'lucide-react';
 
-// ── Preset symbols available for backtesting ──────────────────────────────────
+// ── Pharma / Biotech universe ──────────────────────────────────────────────────
 const PRESET_SYMBOLS = [
-  { symbol: 'AAPL', assetType: 'stock' as const, market: 'us' as const, label: 'Apple' },
-  { symbol: 'MSFT', assetType: 'stock' as const, market: 'us' as const, label: 'Microsoft' },
-  { symbol: 'GOOGL', assetType: 'stock' as const, market: 'us' as const, label: 'Alphabet' },
-  { symbol: 'AMZN', assetType: 'stock' as const, market: 'us' as const, label: 'Amazon' },
-  { symbol: 'TSLA', assetType: 'stock' as const, market: 'us' as const, label: 'Tesla' },
-  { symbol: 'NVDA', assetType: 'stock' as const, market: 'us' as const, label: 'NVIDIA' },
-  { symbol: 'META', assetType: 'stock' as const, market: 'us' as const, label: 'Meta' },
-  { symbol: 'JPM',  assetType: 'stock' as const, market: 'us' as const, label: 'JPMorgan' },
-  { symbol: 'SPY',  assetType: 'etf'   as const, market: 'us' as const, label: 'S&P 500 ETF' },
-  { symbol: 'QQQ',  assetType: 'etf'   as const, market: 'us' as const, label: 'Nasdaq ETF' },
-  { symbol: 'BTC',  assetType: 'crypto' as const, market: 'us' as const, label: 'Bitcoin' },
-  { symbol: 'ETH',  assetType: 'crypto' as const, market: 'us' as const, label: 'Ethereum' },
+  // US Large-Cap Pharma
+  { symbol: 'JNJ',  assetType: 'stock' as const, market: 'us' as const, label: 'Johnson & Johnson' },
+  { symbol: 'PFE',  assetType: 'stock' as const, market: 'us' as const, label: 'Pfizer' },
+  { symbol: 'MRK',  assetType: 'stock' as const, market: 'us' as const, label: 'Merck' },
+  { symbol: 'ABBV', assetType: 'stock' as const, market: 'us' as const, label: 'AbbVie' },
+  { symbol: 'LLY',  assetType: 'stock' as const, market: 'us' as const, label: 'Eli Lilly' },
+  { symbol: 'BMY',  assetType: 'stock' as const, market: 'us' as const, label: 'Bristol-Myers' },
+  // US Biotech
+  { symbol: 'AMGN', assetType: 'stock' as const, market: 'us' as const, label: 'Amgen' },
+  { symbol: 'GILD', assetType: 'stock' as const, market: 'us' as const, label: 'Gilead' },
+  { symbol: 'REGN', assetType: 'stock' as const, market: 'us' as const, label: 'Regeneron' },
+  { symbol: 'VRTX', assetType: 'stock' as const, market: 'us' as const, label: 'Vertex' },
+  { symbol: 'BIIB', assetType: 'stock' as const, market: 'us' as const, label: 'Biogen' },
+  { symbol: 'MRNA', assetType: 'stock' as const, market: 'us' as const, label: 'Moderna' },
+  { symbol: 'BNTX', assetType: 'stock' as const, market: 'us' as const, label: 'BioNTech' },
+  { symbol: 'INCY', assetType: 'stock' as const, market: 'us' as const, label: 'Incyte' },
+  { symbol: 'ALNY', assetType: 'stock' as const, market: 'us' as const, label: 'Alnylam' },
+  // International Pharma (US-listed ADRs)
+  { symbol: 'AZN',  assetType: 'stock' as const, market: 'us' as const, label: 'AstraZeneca' },
+  { symbol: 'NVO',  assetType: 'stock' as const, market: 'us' as const, label: 'Novo Nordisk' },
+  { symbol: 'GSK',  assetType: 'stock' as const, market: 'us' as const, label: 'GSK' },
+  { symbol: 'SNY',  assetType: 'stock' as const, market: 'us' as const, label: 'Sanofi' },
+  { symbol: 'NVS',  assetType: 'stock' as const, market: 'us' as const, label: 'Novartis' },
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -100,9 +111,9 @@ interface OptimizationResult {
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function FineTunePage() {
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>(
-    ['AAPL', 'MSFT', 'GOOGL', 'SPY', 'BTC']
+    ['JNJ', 'PFE', 'MRK', 'ABBV', 'LLY', 'AMGN', 'GILD', 'REGN', 'AZN', 'NVO']
   );
-  const [lookbackDays, setLookbackDays] = useState('180');
+  const [lookbackDays, setLookbackDays] = useState('365');
   const [weightStep, setWeightStep]     = useState('0.05');
   const [isRunning, setIsRunning]       = useState(false);
   const [result, setResult]             = useState<OptimizationResult | null>(null);
@@ -193,7 +204,7 @@ export default function FineTunePage() {
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Backtest to find optimal weights, then run an independent $100k portfolio — separate from the Coach
+            Pharma-specialized: backtest on pharma & biotech stocks, then run an independent $100k portfolio — separate from the Coach
           </p>
         </div>
       </div>
@@ -339,7 +350,7 @@ export default function FineTunePage() {
         <CardContent>
           <div className="grid sm:grid-cols-4 gap-4 text-sm">
             {[
-              { n: 1, title: 'Fetch History', desc: 'Get 180 days of OHLC data for each selected symbol' },
+              { n: 1, title: 'Fetch History', desc: 'Get up to 5 years of pharma OHLC data for each selected symbol' },
               { n: 2, title: 'Run Agents', desc: 'Run Indicator + PriceAction agents on each historical day' },
               { n: 3, title: 'Grid Search', desc: 'Test 100+ weight combinations on Nash consensus' },
               { n: 4, title: 'Apply & Trade', desc: 'Apply optimal weights to your Fine-Tune portfolio — Coach stays unchanged' },
@@ -360,7 +371,7 @@ export default function FineTunePage() {
       <Card>
         <CardHeader>
           <CardTitle>Backtest Configuration</CardTitle>
-          <CardDescription>Select symbols and parameters for the optimization</CardDescription>
+          <CardDescription>Select pharma/biotech symbols and parameters for the optimization</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div>
@@ -394,11 +405,20 @@ export default function FineTunePage() {
               <Select value={lookbackDays} onValueChange={setLookbackDays}>
                 <SelectTrigger id="lookback"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="90">90 days (3 months)</SelectItem>
-                  <SelectItem value="180">180 days (6 months)</SelectItem>
-                  <SelectItem value="365">365 days (1 year)</SelectItem>
+                  <SelectItem value="90">90 days — 3 months (fast)</SelectItem>
+                  <SelectItem value="180">180 days — 6 months</SelectItem>
+                  <SelectItem value="365">1 year</SelectItem>
+                  <SelectItem value="730">2 years</SelectItem>
+                  <SelectItem value="1095">3 years</SelectItem>
+                  <SelectItem value="1825">5 years (slow, most robust)</SelectItem>
                 </SelectContent>
               </Select>
+              {parseInt(lookbackDays) >= 1095 && (
+                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                  Long periods may take 3–5+ minutes to compute
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="step">Weight Granularity</Label>
