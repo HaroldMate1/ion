@@ -8,24 +8,26 @@ import { TrendingUp, DollarSign, PieChart, History, Eye, Shield } from 'lucide-r
 
 export default function Home() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background">
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white">
-        <div className="container mx-auto px-4 py-20">
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-[oklch(0.20_0.06_280)] via-[oklch(0.15_0.04_270)] to-background" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.30_0.12_270_/_20%),transparent_70%)]" />
+        <div className="container mx-auto px-4 py-20 relative z-10">
           <div className="max-w-3xl mx-auto text-center">
             <div className="flex justify-center mb-6">
-              <div className="bg-white/10 p-4 rounded-full">
-                <TrendingUp className="h-12 w-12" />
+              <div className="bg-primary/15 p-4 rounded-full glow-primary">
+                <TrendingUp className="h-12 w-12 text-primary" />
               </div>
             </div>
-            <h1 className="text-5xl font-bold mb-6">
+            <h1 className="text-5xl font-bold mb-6 bg-gradient-to-r from-white to-[oklch(0.80_0.10_270)] bg-clip-text text-transparent">
               Practice Trading Risk-Free
             </h1>
-            <p className="text-xl mb-8 text-blue-100">
+            <p className="text-xl mb-8 text-muted-foreground">
               Start with $100,000 virtual cash. Trade stocks, cryptocurrency, and ETFs with real-time market data.
             </p>
             <Link href="/login">
-              <Button size="lg" variant="secondary" className="text-lg px-8 py-6">
+              <Button size="lg" className="text-lg px-8 py-6 gradient-accent text-white border-0 hover:opacity-90 transition-opacity">
                 Get Started Free
               </Button>
             </Link>
@@ -34,7 +36,7 @@ export default function Home() {
       </section>
 
       {/* Features Section */}
-      <section className="py-20 bg-gray-50">
+      <section className="py-20 bg-background">
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-bold text-center mb-12">Everything You Need to Learn Trading</h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
@@ -73,14 +75,15 @@ export default function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 bg-indigo-600 text-white">
-        <div className="container mx-auto px-4 text-center">
+      <section className="py-20 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-[oklch(0.20_0.08_270)] to-[oklch(0.18_0.06_290)]" />
+        <div className="container mx-auto px-4 text-center relative z-10">
           <h2 className="text-4xl font-bold mb-6">Ready to Start Trading?</h2>
-          <p className="text-xl mb-8 text-indigo-100 max-w-2xl mx-auto">
+          <p className="text-xl mb-8 text-muted-foreground max-w-2xl mx-auto">
             Join now and get instant access to your virtual trading account. No credit card required.
           </p>
           <Link href="/login">
-            <Button size="lg" variant="secondary" className="text-lg px-8 py-6">
+            <Button size="lg" className="text-lg px-8 py-6 gradient-accent text-white border-0 hover:opacity-90 transition-opacity">
               Sign Up Now
             </Button>
           </Link>
@@ -88,7 +91,7 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-gray-400 py-12">
+      <footer className="bg-card border-t border-border text-muted-foreground py-12">
         <div className="container mx-auto px-4 text-center">
           <p>© 2026 Investment Demo. Built with Next.js and Supabase.</p>
           <p className="mt-2 text-sm">This is a demo app for educational purposes only.</p>
@@ -100,12 +103,12 @@ export default function Home() {
 
 function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-      <div className="bg-indigo-100 w-16 h-16 rounded-lg flex items-center justify-center mb-4 text-indigo-600">
+    <div className="bg-card p-6 rounded-xl border border-border card-hover-glow transition-all duration-300">
+      <div className="bg-primary/10 w-16 h-16 rounded-xl flex items-center justify-center mb-4 text-primary">
         {icon}
       </div>
       <h3 className="text-xl font-semibold mb-2">{title}</h3>
-      <p className="text-gray-600">{description}</p>
+      <p className="text-muted-foreground">{description}</p>
     </div>
   );
 }

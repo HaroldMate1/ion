@@ -50,12 +50,15 @@ export async function GET() {
     );
     const portfolioIds = initializedPortfolios.map((p: any) => p.id);
 
+    // Cross-investor holdings map: symbol -> [{ investorSlug, displayName, allocationPct }]
+    const crossHoldings: Record<string, Array<{ investorSlug: string; displayName: string; allocationPct: number }>> = {};
+
     if (portfolioIds.length > 0) {
       try {
         // Fetch ALL holdings for ALL initialized portfolios in one query
         const { data: allHoldings } = await (supabase
           .from('expert_holding') as any)
-          .select('portfolio_id, symbol, quantity, total_invested')
+          .select('portfolio_id, symbol, quantity, total_invested, target_allocation_pct')
           .in('portfolio_id', portfolioIds);
 
         if (allHoldings && allHoldings.length > 0) {
@@ -91,6 +94,25 @@ export async function GET() {
             (portfolio as any).totalValue = totalPortfolioValue;
             (portfolio as any).totalReturnPct =
               ((totalPortfolioValue - INITIAL_EXPERT_BALANCE) / INITIAL_EXPERT_BALANCE) * 100;
+
+            // Build cross-holdings: actual allocation % for each holding in this portfolio
+            const investorSlug = (portfolio as any).investorSlug;
+            const investor = EXPERT_INVESTORS[investorSlug as InvestorSlug];
+            for (const holding of holdings) {
+              const price = priceMap.get(holding.symbol);
+              const holdingValue = price
+                ? parseFloat(holding.quantity) * price
+                : parseFloat(holding.total_invested);
+              const actualPct = totalPortfolioValue > 0
+                ? (holdingValue / totalPortfolioValue) * 100 : 0;
+
+              if (!crossHoldings[holding.symbol]) crossHoldings[holding.symbol] = [];
+              crossHoldings[holding.symbol].push({
+                investorSlug,
+                displayName: investor?.displayName || investorSlug,
+                allocationPct: Math.round(actualPct * 100) / 100,
+              });
+            }
           }
         }
       } catch (err) {
@@ -133,7 +155,15 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ portfolios });
+    // Only include symbols held by 2+ investors in cross-holdings
+    const sharedHoldings: typeof crossHoldings = {};
+    for (const [symbol, investors] of Object.entries(crossHoldings)) {
+      if (investors.length >= 2) {
+        sharedHoldings[symbol] = investors.sort((a, b) => b.allocationPct - a.allocationPct);
+      }
+    }
+
+    return NextResponse.json({ portfolios, crossHoldings: sharedHoldings });
   } catch (error) {
     console.error('Expert portfolios GET error:', error);
     return NextResponse.json({ error: 'Failed to fetch portfolios' }, { status: 500 });

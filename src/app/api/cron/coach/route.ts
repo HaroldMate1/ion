@@ -16,8 +16,12 @@ import {
   runAnalysisForUser,
   autoCloseTradesForUser,
   generateDailyReportForUser,
+  runFineTuneForUser,
   transformConfigRow,
 } from '@/lib/coach/autonomousRunner';
+import { fetchARKActivity } from '@/lib/expert-tracking/ark-fetcher';
+import { fetchHouseDisclosureActivity } from '@/lib/expert-tracking/house-disclosure-fetcher';
+import { fetchAll13FActivity } from '@/lib/expert-tracking/sec-13f-fetcher';
 
 export const maxDuration = 300; // 5 minutes max for cron execution
 
@@ -94,6 +98,15 @@ export async function GET(request: NextRequest) {
         // Step 3: Auto-generate daily report with summary
         const reportResult = await generateDailyReportForUser(supabase, userId);
 
+        // Step 4: Run Fine-Tune portfolio (pharma) — non-blocking per user
+        let fineTuneResult: any = { skipped: true, reason: 'not attempted' };
+        try {
+          fineTuneResult = await runFineTuneForUser(supabase, userId);
+        } catch (ftErr) {
+          console.error(`[Fine-Tune] Error for user ${userId}:`, ftErr);
+          fineTuneResult = { error: String(ftErr) };
+        }
+
         results.push({
           userId,
           analysis: analysisResult,
@@ -105,7 +118,8 @@ export async function GET(request: NextRequest) {
           `Processed user ${userId}: ` +
           `${analysisResult.skipped ? 'skipped' : `${analysisResult.signalsGenerated || 0} signals, ${analysisResult.autoExecutedTrades?.length || 0} trades`}, ` +
           `${autoCloseResult.closed} trades closed, ` +
-          `report: ${reportResult.skipped ? 'skipped' : 'generated'}`
+          `report: ${reportResult.skipped ? 'skipped' : 'generated'}, ` +
+          `fine-tune: ${fineTuneResult.skipped ? 'skipped' : `${fineTuneResult.tradesExecuted || 0} trades`}`
         );
       } catch (userError) {
         console.error(`Error processing user ${userId}:`, userError);
@@ -115,6 +129,57 @@ export async function GET(request: NextRequest) {
           autoClose: { error: String(userError) },
         });
       }
+    }
+
+    // ── Expert Investor Activity Tracking ──────────────────────────────
+    // Runs after coach processing — non-blocking, errors don't fail the cron
+    try {
+      // Fetch activity from all sources in parallel
+      const [arkEvents, pelosiEvents, sec13fEvents] = await Promise.all([
+        fetchARKActivity(),
+        fetchHouseDisclosureActivity(),
+        fetchAll13FActivity(),
+      ]);
+
+      const allEvents = [...arkEvents, ...pelosiEvents, ...sec13fEvents];
+      if (allEvents.length > 0) {
+        const rows = allEvents.map(e => ({
+          investor_slug: e.investorSlug,
+          event_date: e.eventDate,
+          symbol: e.symbol,
+          asset_name: e.assetName || null,
+          action: e.action,
+          amount_range: e.amountRange || null,
+          shares_change: e.sharesChange ?? null,
+          previous_pct: e.previousPct ?? null,
+          new_pct: e.newPct ?? null,
+          source: e.source,
+          raw_data: e.rawData || null,
+        }));
+
+        const { error: upsertError } = await (supabase
+          .from('expert_investor_activity' as any) as any)
+          .upsert(rows, {
+            onConflict: 'investor_slug,event_date,symbol,action,source',
+            ignoreDuplicates: true,
+          });
+
+        if (upsertError) {
+          if (upsertError.code === '42P01') {
+            // Table does not exist yet — migration not yet applied
+            console.warn('[Expert Tracking] Table not found — run migration 006_expert_investor_activity.sql');
+          } else {
+            console.error('[Expert Tracking] Upsert error:', upsertError);
+          }
+        } else {
+          console.log(`[Expert Tracking] Saved ${rows.length} activity events`);
+        }
+      } else {
+        console.log('[Expert Tracking] No new events detected');
+      }
+    } catch (trackingError) {
+      // Non-blocking — log but don't fail the cron response
+      console.error('[Expert Tracking] Error (non-fatal):', trackingError);
     }
 
     return NextResponse.json({

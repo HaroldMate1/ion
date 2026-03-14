@@ -13,7 +13,7 @@ export const tradeActionSchema = z.enum(['BUY', 'SELL', 'HOLD']);
 export const tradeStatusSchema = z.enum(['open', 'closed', 'stopped', 'tp_hit']);
 export const timeframeSchema = z.enum(['1H', '4H', '1D', '1W']);
 export const assetTypeSchema = z.enum(['stock', 'etf', 'crypto']);
-export const marketSchema = z.enum(['us', 'europe', 'colombia']);
+export const marketSchema = z.enum(['us', 'europe', 'latam']);
 
 // ============================================================================
 // Configuration Schemas

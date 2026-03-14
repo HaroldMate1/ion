@@ -140,6 +140,29 @@ export function usePortfolioSummary(): PortfolioSummary | null {
 }
 
 /**
+ * Reset the main portfolio — clears all holdings, transactions, and restores $100k balance
+ */
+export function useResetPortfolio() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/trade/reset', { method: 'DELETE' });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to reset portfolio');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['balance'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+}
+
+/**
  * Execute a buy trade
  */
 export function useBuyTrade() {

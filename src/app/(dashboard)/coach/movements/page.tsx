@@ -131,6 +131,11 @@ function MovementEntry({ trade, isLast }: { trade: CoachPaperTrade; isLast: bool
     minute: '2-digit',
   });
 
+  // Parse TP levels from trade data
+  const takeProfits = trade.takeProfitJson || [];
+  const stopLoss = trade.stopLoss;
+  const stopDist = stopLoss ? Math.abs(trade.entryPrice - stopLoss) : 0;
+
   return (
     <div className="flex gap-4 pb-4">
       {/* Timeline dot and line */}
@@ -142,7 +147,7 @@ function MovementEntry({ trade, isLast }: { trade: CoachPaperTrade; isLast: bool
       {/* Content */}
       <div className="flex-1 pb-2">
         <div className="flex items-start justify-between">
-          <div>
+          <div className="flex-1">
             <div className="flex items-center gap-2">
               {isBuy ? (
                 <Badge className="bg-green-500 text-xs">
@@ -161,8 +166,57 @@ function MovementEntry({ trade, isLast }: { trade: CoachPaperTrade; isLast: bool
             <p className="text-sm text-muted-foreground mt-1">
               {isBuy ? 'Bought' : 'Sold'} at ${trade.entryPrice.toFixed(2)} &middot; Position: ${trade.sizeUsd.toFixed(2)}
             </p>
+
+            {/* Risk Management Details */}
+            <div className="mt-2 space-y-1">
+              {/* Stop Loss */}
+              {stopLoss != null && (
+                <div className="flex items-center gap-2 text-xs">
+                  <Badge variant="destructive" className="text-xs px-1.5 py-0">SL</Badge>
+                  <span className="text-muted-foreground">
+                    ${stopLoss.toFixed(2)} ({((stopDist / trade.entryPrice) * 100).toFixed(1)}% risk)
+                  </span>
+                </div>
+              )}
+
+              {/* Take Profit Levels */}
+              {takeProfits.length > 0 && (
+                <div className="space-y-0.5">
+                  {takeProfits.map((tp: any, i: number) => {
+                    const pctFromEntry = ((tp.price - trade.entryPrice) / trade.entryPrice * 100).toFixed(1);
+                    const rMultiple = stopDist > 0
+                      ? (Math.abs(tp.price - trade.entryPrice) / stopDist).toFixed(1)
+                      : '?';
+                    return (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <Badge className="bg-emerald-600 text-xs px-1.5 py-0">
+                          TP{i + 1}
+                        </Badge>
+                        <span className="text-muted-foreground">
+                          ${tp.price.toFixed(2)} ({pctFromEntry}%, {rMultiple}R)
+                          &bull; Close {tp.percentage}% of position
+                          {tp.type === 'trailing' && ' (trailing)'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {/* TP Explanation */}
+                  <p className="text-xs text-muted-foreground/70 mt-1 italic pl-1">
+                    {stopDist > 0 ? (
+                      <>
+                        TPs based on ${stopDist.toFixed(2)} risk per share (1R).
+                        TP1 at 1× risk, TP2 at 2× risk, Runner at 2.5× with trailing stop.
+                      </>
+                    ) : (
+                      'Take profits set by analysis engine based on support/resistance levels.'
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
+
             {trade.notes && (
-              <p className="text-xs text-muted-foreground mt-0.5 italic">
+              <p className="text-xs text-muted-foreground mt-1.5 italic">
                 {trade.notes}
               </p>
             )}

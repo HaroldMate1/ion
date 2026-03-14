@@ -15,10 +15,15 @@ import type {
 // Query Keys
 // ============================================================================
 
+// ============================================================================
+// Query Keys
+// ============================================================================
+
 export const llmPortfolioKeys = {
   all: ['llm-portfolios'] as const,
   list: () => [...llmPortfolioKeys.all, 'list'] as const,
   detail: (id: string) => [...llmPortfolioKeys.all, 'detail', id] as const,
+  logs: (id: string) => [...llmPortfolioKeys.all, 'logs', id] as const,
 };
 
 // ============================================================================
@@ -43,6 +48,26 @@ interface GetPortfolioResponse {
   };
 }
 
+interface DailyLog {
+  id: string;
+  portfolio_id: string;
+  content: string;
+  created_at: string;
+}
+
+interface ListLogsResponse {
+  logs: DailyLog[];
+}
+
+interface TradeRequest {
+  portfolioId: string;
+  symbol: string;
+  action: 'buy' | 'sell';
+  quantity: number;
+  assetType?: string;
+  market?: string;
+}
+
 // ============================================================================
 // List Hooks
 // ============================================================================
@@ -61,6 +86,22 @@ export function useLLMPortfolios() {
       }
       return response.json();
     },
+  });
+}
+
+/**
+ * Hook to fetch daily logs for a portfolio
+ */
+export function useLLMDailyLogs(portfolioId: string | null) {
+  return useQuery({
+    queryKey: llmPortfolioKeys.logs(portfolioId || ''),
+    queryFn: async (): Promise<ListLogsResponse> => {
+      if (!portfolioId) throw new Error('Portfolio ID required');
+      const response = await fetch(`/api/llm/logs?portfolioId=${portfolioId}`);
+      if (!response.ok) throw new Error('Failed to fetch logs');
+      return response.json();
+    },
+    enabled: !!portfolioId,
   });
 }
 
@@ -92,6 +133,27 @@ export function useLLMPortfolio(id: string | null) {
 // ============================================================================
 
 /**
+ * Reset (delete) an LLM portfolio so it can be re-initialized from scratch.
+ */
+export function useResetLLMPortfolio() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/llm/portfolios/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to reset portfolio');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: llmPortfolioKeys.all });
+    },
+  });
+}
+
+/**
  * Hook to initialize a new LLM portfolio with predefined allocations
  */
 export function useInitializeLLMPortfolio() {
@@ -115,6 +177,99 @@ export function useInitializeLLMPortfolio() {
     onSuccess: () => {
       // Invalidate the list to refetch all portfolios
       queryClient.invalidateQueries({ queryKey: llmPortfolioKeys.list() });
+    },
+  });
+}
+
+/**
+ * Hook to create a daily log entry
+ */
+export function useCreateLLMDailyLog() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ portfolioId, content }: { portfolioId: string; content: string }) => {
+      const response = await fetch('/api/llm/logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ portfolioId, content }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create log');
+      }
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: llmPortfolioKeys.logs(variables.portfolioId) });
+    },
+  });
+}
+
+/**
+ * Hook to execute a trade
+ */
+export function useExecuteLLMTrade() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (trade: TradeRequest) => {
+      const response = await fetch('/api/llm/trade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(trade),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to execute trade');
+      }
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: llmPortfolioKeys.detail(variables.portfolioId) });
+      queryClient.invalidateQueries({ queryKey: llmPortfolioKeys.list() });
+    },
+  });
+}
+
+/**
+ * Hook to parse LLM text and auto-execute trades
+ * Saves the daily log and executes all detected BUY/SELL instructions.
+ */
+export interface ParseAndTradeResult {
+  symbol: string;
+  action: string;
+  status: string;
+  detail: string;
+}
+
+export interface ParseAndTradeResponse {
+  success: boolean;
+  tradesFound: number;
+  results: ParseAndTradeResult[];
+  logSaved: boolean;
+}
+
+export function useParseAndTrade() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ portfolioId, content }: { portfolioId: string; content: string }): Promise<ParseAndTradeResponse> => {
+      const response = await fetch('/api/llm/parse-and-trade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ portfolioId, content }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to parse and execute trades');
+      }
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: llmPortfolioKeys.detail(variables.portfolioId) });
+      queryClient.invalidateQueries({ queryKey: llmPortfolioKeys.list() });
+      queryClient.invalidateQueries({ queryKey: llmPortfolioKeys.logs(variables.portfolioId) });
     },
   });
 }

@@ -15,14 +15,16 @@ import YahooFinance from 'yahoo-finance2';
 const yf = new YahooFinance();
 const INITIAL_BALANCE = 100_000;
 
-// Pharma/biotech universe for live trading
+// Pharma/biotech universe for live trading (55 stocks)
 const FINE_TUNE_WATCH = [
   // US Large-Cap Pharma
-  'JNJ', 'PFE', 'MRK', 'ABBV', 'LLY', 'BMY',
+  'JNJ','PFE','MRK','ABBV','LLY','BMY','TMO','ABT','DHR','SYK','BDX','ZTS','BAX','VTRS',
   // US Biotech
-  'AMGN', 'GILD', 'REGN', 'VRTX', 'BIIB', 'MRNA', 'BNTX', 'INCY', 'ALNY',
-  // International Pharma (US-listed ADRs)
-  'AZN', 'NVO', 'GSK', 'SNY', 'NVS',
+  'AMGN','GILD','REGN','VRTX','BIIB','MRNA','BNTX','INCY','ALNY','BMRN','SGEN',
+  'EXEL','HALO','UTHR','NBIX','PCVX','SRPT','RARE','IONS','PTCT','INSM','MEDP',
+  // International ADRs
+  'AZN','NVO','GSK','SNY','NVS','RHHBY','BAYRY','TAK','ARGX','HLN','ZLAB',
+  'RDY','TEVA','ALVO','LEGN','BHC','CTLT','IQV','CRL',
 ];
 
 export async function POST() {

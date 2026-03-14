@@ -38,7 +38,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[oklch(0.18_0.05_280)] via-background to-[oklch(0.14_0.03_260)] p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
@@ -76,7 +76,7 @@ export default function LoginPage() {
             <p>By signing in, you agree to our terms and privacy policy.</p>
           </div>
 
-          <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
+          <div className="mt-6 p-4 bg-accent rounded-lg">
             <h3 className="font-semibold text-sm mb-2">Features:</h3>
             <ul className="text-xs space-y-1 text-muted-foreground">
               <li>• Start with $100,000 virtual cash</li>

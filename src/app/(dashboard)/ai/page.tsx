@@ -17,8 +17,8 @@ const AI_SECTIONS = [
     title: 'Trading Coach',
     description:
       'An autonomous AI agent that monitors markets, generates trading signals, and executes paper trades based on technical indicators, price action, and news sentiment.',
-    color: 'text-blue-600',
-    bg: 'bg-blue-50',
+    color: 'text-blue-400',
+    bg: 'bg-blue-500/15',
     badge: 'Autonomous',
   },
   {
@@ -27,8 +27,8 @@ const AI_SECTIONS = [
     title: 'Fine-Tune Model',
     description:
       'Optimize your trading coach by backtesting different agent weight combinations on historical data. Find the configuration with the best Sharpe ratio for your watchlist.',
-    color: 'text-purple-600',
-    bg: 'bg-purple-50',
+    color: 'text-purple-400',
+    bg: 'bg-purple-500/15',
     badge: 'Experimental',
   },
   {
@@ -37,8 +37,8 @@ const AI_SECTIONS = [
     title: 'LLM Portfolios',
     description:
       'Compare investment strategies from 5 leading AI models — Gemini, Claude, Perplexity, ChatGPT and Grok — each managing a $100,000 virtual portfolio over a 4-year horizon.',
-    color: 'text-green-600',
-    bg: 'bg-green-50',
+    color: 'text-emerald-400',
+    bg: 'bg-emerald-500/15',
     badge: '5 Models',
   },
 ];
@@ -50,8 +50,8 @@ const WIZARD_SECTIONS = [
     title: 'Merlin',
     description:
       "Joel Greenblatt's Magic Formula: rank ~120 large-cap US stocks by Earnings Yield + Return on Equity, then invest $100,000 equally across the top 30.",
-    color: 'text-amber-600',
-    bg: 'bg-amber-50',
+    color: 'text-amber-400',
+    bg: 'bg-amber-500/15',
     badge: 'Magic Formula',
   },
   {
@@ -60,8 +60,8 @@ const WIZARD_SECTIONS = [
     title: 'Houdini',
     description:
       'Magic Formula applied only to stocks that clear 19 institutional-grade quality gates across profitability, debt, consistency, valuation, and Piotroski/Altman scores.',
-    color: 'text-violet-600',
-    bg: 'bg-violet-50',
+    color: 'text-violet-400',
+    bg: 'bg-violet-500/15',
     badge: 'Elite Filter',
   },
 ];

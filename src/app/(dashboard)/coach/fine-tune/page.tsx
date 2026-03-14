@@ -16,6 +16,7 @@ import {
   useFineTuneTrades,
   useApplyFineTuneWeights,
   useRunFineTuneAnalysis,
+  useResetFineTune,
 } from '@/hooks/use-fine-tune-portfolio';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,8 +31,10 @@ import {
 import { Label } from '@/components/ui/label';
 import {
   ArrowLeft,
+  FileText,
   FlaskConical,
   RefreshCw,
+  RotateCcw,
   TrendingUp,
   TrendingDown,
   Zap,
@@ -45,31 +48,66 @@ import {
   Percent,
 } from 'lucide-react';
 
-// ── Pharma / Biotech universe ──────────────────────────────────────────────────
+// ── Pharma / Biotech universe (55 companies — US + International ADRs) ────────
 const PRESET_SYMBOLS = [
-  // US Large-Cap Pharma
-  { symbol: 'JNJ',  assetType: 'stock' as const, market: 'us' as const, label: 'Johnson & Johnson' },
-  { symbol: 'PFE',  assetType: 'stock' as const, market: 'us' as const, label: 'Pfizer' },
-  { symbol: 'MRK',  assetType: 'stock' as const, market: 'us' as const, label: 'Merck' },
-  { symbol: 'ABBV', assetType: 'stock' as const, market: 'us' as const, label: 'AbbVie' },
-  { symbol: 'LLY',  assetType: 'stock' as const, market: 'us' as const, label: 'Eli Lilly' },
-  { symbol: 'BMY',  assetType: 'stock' as const, market: 'us' as const, label: 'Bristol-Myers' },
-  // US Biotech
-  { symbol: 'AMGN', assetType: 'stock' as const, market: 'us' as const, label: 'Amgen' },
-  { symbol: 'GILD', assetType: 'stock' as const, market: 'us' as const, label: 'Gilead' },
-  { symbol: 'REGN', assetType: 'stock' as const, market: 'us' as const, label: 'Regeneron' },
-  { symbol: 'VRTX', assetType: 'stock' as const, market: 'us' as const, label: 'Vertex' },
-  { symbol: 'BIIB', assetType: 'stock' as const, market: 'us' as const, label: 'Biogen' },
-  { symbol: 'MRNA', assetType: 'stock' as const, market: 'us' as const, label: 'Moderna' },
-  { symbol: 'BNTX', assetType: 'stock' as const, market: 'us' as const, label: 'BioNTech' },
-  { symbol: 'INCY', assetType: 'stock' as const, market: 'us' as const, label: 'Incyte' },
-  { symbol: 'ALNY', assetType: 'stock' as const, market: 'us' as const, label: 'Alnylam' },
-  // International Pharma (US-listed ADRs)
-  { symbol: 'AZN',  assetType: 'stock' as const, market: 'us' as const, label: 'AstraZeneca' },
-  { symbol: 'NVO',  assetType: 'stock' as const, market: 'us' as const, label: 'Novo Nordisk' },
-  { symbol: 'GSK',  assetType: 'stock' as const, market: 'us' as const, label: 'GSK' },
-  { symbol: 'SNY',  assetType: 'stock' as const, market: 'us' as const, label: 'Sanofi' },
-  { symbol: 'NVS',  assetType: 'stock' as const, market: 'us' as const, label: 'Novartis' },
+  // ── US Large-Cap Pharma ─────────────────────────────────────────────────────
+  { symbol: 'JNJ',   assetType: 'stock' as const, market: 'us' as const, label: 'Johnson & Johnson' },
+  { symbol: 'PFE',   assetType: 'stock' as const, market: 'us' as const, label: 'Pfizer' },
+  { symbol: 'MRK',   assetType: 'stock' as const, market: 'us' as const, label: 'Merck' },
+  { symbol: 'ABBV',  assetType: 'stock' as const, market: 'us' as const, label: 'AbbVie' },
+  { symbol: 'LLY',   assetType: 'stock' as const, market: 'us' as const, label: 'Eli Lilly' },
+  { symbol: 'BMY',   assetType: 'stock' as const, market: 'us' as const, label: 'Bristol-Myers Squibb' },
+  { symbol: 'TMO',   assetType: 'stock' as const, market: 'us' as const, label: 'Thermo Fisher' },
+  { symbol: 'ABT',   assetType: 'stock' as const, market: 'us' as const, label: 'Abbott Labs' },
+  { symbol: 'DHR',   assetType: 'stock' as const, market: 'us' as const, label: 'Danaher' },
+  { symbol: 'SYK',   assetType: 'stock' as const, market: 'us' as const, label: 'Stryker' },
+  { symbol: 'BDX',   assetType: 'stock' as const, market: 'us' as const, label: 'Becton Dickinson' },
+  { symbol: 'ZTS',   assetType: 'stock' as const, market: 'us' as const, label: 'Zoetis' },
+  { symbol: 'BAX',   assetType: 'stock' as const, market: 'us' as const, label: 'Baxter Intl' },
+  { symbol: 'VTRS',  assetType: 'stock' as const, market: 'us' as const, label: 'Viatris (Generics)' },
+  // ── US Biotech ──────────────────────────────────────────────────────────────
+  { symbol: 'AMGN',  assetType: 'stock' as const, market: 'us' as const, label: 'Amgen' },
+  { symbol: 'GILD',  assetType: 'stock' as const, market: 'us' as const, label: 'Gilead Sciences' },
+  { symbol: 'REGN',  assetType: 'stock' as const, market: 'us' as const, label: 'Regeneron' },
+  { symbol: 'VRTX',  assetType: 'stock' as const, market: 'us' as const, label: 'Vertex Pharma' },
+  { symbol: 'BIIB',  assetType: 'stock' as const, market: 'us' as const, label: 'Biogen' },
+  { symbol: 'MRNA',  assetType: 'stock' as const, market: 'us' as const, label: 'Moderna' },
+  { symbol: 'BNTX',  assetType: 'stock' as const, market: 'us' as const, label: 'BioNTech' },
+  { symbol: 'INCY',  assetType: 'stock' as const, market: 'us' as const, label: 'Incyte' },
+  { symbol: 'ALNY',  assetType: 'stock' as const, market: 'us' as const, label: 'Alnylam' },
+  { symbol: 'BMRN',  assetType: 'stock' as const, market: 'us' as const, label: 'BioMarin' },
+  { symbol: 'SGEN',  assetType: 'stock' as const, market: 'us' as const, label: 'Seagen' },
+  { symbol: 'EXEL',  assetType: 'stock' as const, market: 'us' as const, label: 'Exelixis' },
+  { symbol: 'HALO',  assetType: 'stock' as const, market: 'us' as const, label: 'Halozyme' },
+  { symbol: 'UTHR',  assetType: 'stock' as const, market: 'us' as const, label: 'United Therapeutics' },
+  { symbol: 'NBIX',  assetType: 'stock' as const, market: 'us' as const, label: 'Neurocrine Bio' },
+  { symbol: 'PCVX',  assetType: 'stock' as const, market: 'us' as const, label: 'Vaxcyte' },
+  { symbol: 'SRPT',  assetType: 'stock' as const, market: 'us' as const, label: 'Sarepta Therapeutics' },
+  { symbol: 'RARE',  assetType: 'stock' as const, market: 'us' as const, label: 'Ultragenyx' },
+  { symbol: 'IONS',  assetType: 'stock' as const, market: 'us' as const, label: 'Ionis Pharma' },
+  { symbol: 'PTCT',  assetType: 'stock' as const, market: 'us' as const, label: 'PTC Therapeutics' },
+  { symbol: 'INSM',  assetType: 'stock' as const, market: 'us' as const, label: 'Insmed' },
+  { symbol: 'MEDP',  assetType: 'stock' as const, market: 'us' as const, label: 'Medpace (CRO)' },
+  // ── International Pharma (US-listed ADRs) ───────────────────────────────────
+  { symbol: 'AZN',   assetType: 'stock' as const, market: 'us' as const, label: 'AstraZeneca (UK)' },
+  { symbol: 'NVO',   assetType: 'stock' as const, market: 'us' as const, label: 'Novo Nordisk (DK)' },
+  { symbol: 'GSK',   assetType: 'stock' as const, market: 'us' as const, label: 'GSK (UK)' },
+  { symbol: 'SNY',   assetType: 'stock' as const, market: 'us' as const, label: 'Sanofi (FR)' },
+  { symbol: 'NVS',   assetType: 'stock' as const, market: 'us' as const, label: 'Novartis (CH)' },
+  { symbol: 'RHHBY', assetType: 'stock' as const, market: 'us' as const, label: 'Roche (CH)' },
+  { symbol: 'BAYRY', assetType: 'stock' as const, market: 'us' as const, label: 'Bayer (DE)' },
+  { symbol: 'TAK',   assetType: 'stock' as const, market: 'us' as const, label: 'Takeda (JP)' },
+  { symbol: 'ARGX',  assetType: 'stock' as const, market: 'us' as const, label: 'argenx (NL)' },
+  { symbol: 'HLN',   assetType: 'stock' as const, market: 'us' as const, label: 'Haleon (UK)' },
+  { symbol: 'ZLAB',  assetType: 'stock' as const, market: 'us' as const, label: 'Zai Lab (CN)' },
+  { symbol: 'RDY',   assetType: 'stock' as const, market: 'us' as const, label: "Dr. Reddy's (IN)" },
+  { symbol: 'TEVA',  assetType: 'stock' as const, market: 'us' as const, label: 'Teva Pharma (IL)' },
+  { symbol: 'ALVO',  assetType: 'stock' as const, market: 'us' as const, label: 'Alvotech (IS)' },
+  { symbol: 'LEGN',  assetType: 'stock' as const, market: 'us' as const, label: 'Legend Biotech (CN)' },
+  { symbol: 'BHC',   assetType: 'stock' as const, market: 'us' as const, label: 'Bausch Health (CA)' },
+  { symbol: 'CTLT',  assetType: 'stock' as const, market: 'us' as const, label: 'Catalent (CDMO)' },
+  { symbol: 'IQV',   assetType: 'stock' as const, market: 'us' as const, label: 'IQVIA (CRO)' },
+  { symbol: 'CRL',   assetType: 'stock' as const, market: 'us' as const, label: 'Charles River Labs' },
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -110,9 +148,6 @@ interface OptimizationResult {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function FineTunePage() {
-  const [selectedSymbols, setSelectedSymbols] = useState<string[]>(
-    ['JNJ', 'PFE', 'MRK', 'ABBV', 'LLY', 'AMGN', 'GILD', 'REGN', 'AZN', 'NVO']
-  );
   const [lookbackDays, setLookbackDays] = useState('365');
   const [weightStep, setWeightStep]     = useState('0.05');
   const [isRunning, setIsRunning]       = useState(false);
@@ -124,25 +159,17 @@ export default function FineTunePage() {
   const { data: tradesData }          = useFineTuneTrades();
   const applyWeights                  = useApplyFineTuneWeights();
   const runAnalysis                   = useRunFineTuneAnalysis();
+  const resetFineTune                 = useResetFineTune();
   const trades: any[]                 = tradesData?.trades || [];
-
-  const toggleSymbol = (symbol: string) => {
-    setSelectedSymbols(prev =>
-      prev.includes(symbol) ? prev.filter(s => s !== symbol) : [...prev, symbol]
-    );
-  };
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const handleRunOptimization = async () => {
-    if (selectedSymbols.length === 0) { toast.error('Select at least one symbol'); return; }
     setIsRunning(true);
     setResult(null);
     try {
-      const symbols = selectedSymbols.map(sym => {
-        const preset = PRESET_SYMBOLS.find(p => p.symbol === sym);
-        return preset
-          ? { symbol: preset.symbol, assetType: preset.assetType, market: preset.market }
-          : { symbol: sym, assetType: 'stock' as const, market: 'us' as const };
-      });
+      const symbols = PRESET_SYMBOLS.map(p => ({
+        symbol: p.symbol, assetType: p.assetType, market: p.market,
+      }));
       const response = await fetch('/api/coach/optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -170,6 +197,16 @@ export default function FineTunePage() {
       toast.success('Optimized weights applied to Fine-Tune portfolio!');
     } catch (error: any) {
       toast.error(error.message || 'Failed to apply weights');
+    }
+  };
+
+  const handleResetFineTune = async () => {
+    try {
+      await resetFineTune.mutateAsync();
+      setConfirmReset(false);
+      toast.success('Fine-Tune portfolio reset. You can now apply new weights.');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to reset portfolio');
     }
   };
 
@@ -204,9 +241,19 @@ export default function FineTunePage() {
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Pharma-specialized: backtest on pharma & biotech stocks, then run an independent $100k portfolio — separate from the Coach
+            Pharma-specialized: backtests all {PRESET_SYMBOLS.length} pharma & biotech stocks, then runs an independent $100k portfolio — separate from the Coach
           </p>
         </div>
+      </div>
+
+      {/* Navigation */}
+      <div className="flex gap-2">
+        <Link href="/coach/fine-tune/reports">
+          <Button variant="outline" size="sm" className="text-xs border-purple-500/30 hover:bg-purple-500/10">
+            <FileText className="h-4 w-4 mr-1.5 shrink-0 text-purple-500" />
+            <span className="text-purple-400">Reports</span>
+          </Button>
+        </Link>
       </div>
 
       {/* ── Fine-Tune Portfolio Dashboard ────────────────────────────────── */}
@@ -298,6 +345,23 @@ export default function FineTunePage() {
                 )}
               </Button>
 
+              {/* Restart */}
+              <div className="flex justify-end pt-1">
+                {confirmReset ? (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">Reset all trades and start fresh?</span>
+                    <Button size="sm" variant="destructive" onClick={handleResetFineTune} disabled={resetFineTune.isPending}>
+                      {resetFineTune.isPending ? <RefreshCw className="h-3 w-3 animate-spin" /> : 'Yes, reset'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setConfirmReset(false)}>Cancel</Button>
+                  </div>
+                ) : (
+                  <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setConfirmReset(true)}>
+                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Restart Portfolio
+                  </Button>
+                )}
+              </div>
+
               {/* Recent trades */}
               {trades.length > 0 && (
                 <div className="space-y-2">
@@ -350,7 +414,7 @@ export default function FineTunePage() {
         <CardContent>
           <div className="grid sm:grid-cols-4 gap-4 text-sm">
             {[
-              { n: 1, title: 'Fetch History', desc: 'Get up to 5 years of pharma OHLC data for each selected symbol' },
+              { n: 1, title: 'Fetch History', desc: `Get up to 5 years of OHLC data for all ${PRESET_SYMBOLS.length} pharma/biotech stocks` },
               { n: 2, title: 'Run Agents', desc: 'Run Indicator + PriceAction agents on each historical day' },
               { n: 3, title: 'Grid Search', desc: 'Test 100+ weight combinations on Nash consensus' },
               { n: 4, title: 'Apply & Trade', desc: 'Apply optimal weights to your Fine-Tune portfolio — Coach stays unchanged' },
@@ -371,31 +435,24 @@ export default function FineTunePage() {
       <Card>
         <CardHeader>
           <CardTitle>Backtest Configuration</CardTitle>
-          <CardDescription>Select pharma/biotech symbols and parameters for the optimization</CardDescription>
+          <CardDescription>Configure parameters for the {PRESET_SYMBOLS.length}-stock pharma/biotech optimization</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Universe overview — compact list of all 55 companies */}
           <div>
-            <Label className="mb-3 block">Symbols to Test</Label>
-            <div className="flex flex-wrap gap-2">
-              {PRESET_SYMBOLS.map(preset => (
-                <button
-                  key={preset.symbol}
-                  onClick={() => toggleSymbol(preset.symbol)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                    selectedSymbols.includes(preset.symbol)
-                      ? 'bg-purple-500 text-white border-purple-500'
-                      : 'bg-background hover:bg-accent border-border'
-                  }`}
-                >
-                  {preset.symbol}
-                  <span className="ml-1 text-xs opacity-70">
-                    {preset.assetType === 'crypto' ? '₿' : preset.assetType === 'etf' ? '📊' : '📈'}
-                  </span>
-                </button>
-              ))}
+            <Label className="mb-2 block">Pharma & Biotech Universe ({PRESET_SYMBOLS.length} companies)</Label>
+            <div className="p-3 rounded-lg bg-muted/30 border text-xs text-muted-foreground max-h-40 overflow-y-auto">
+              <div className="columns-2 sm:columns-3 gap-x-4">
+                {PRESET_SYMBOLS.map(p => (
+                  <p key={p.symbol} className="break-inside-avoid py-0.5">
+                    <span className="font-semibold text-foreground">{p.symbol}</span>{' '}
+                    <span className="opacity-80">{p.label}</span>
+                  </p>
+                ))}
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              {selectedSymbols.length} selected — more symbols = more robust weights but slower
+            <p className="text-xs text-muted-foreground mt-1.5">
+              All {PRESET_SYMBOLS.length} stocks are backtested — broader universe = more robust weights
             </p>
           </div>
 
@@ -434,7 +491,7 @@ export default function FineTunePage() {
 
           <Button
             onClick={handleRunOptimization}
-            disabled={isRunning || selectedSymbols.length === 0}
+            disabled={isRunning}
             className="w-full bg-purple-600 hover:bg-purple-700"
             size="lg"
           >

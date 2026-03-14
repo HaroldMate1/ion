@@ -3,7 +3,9 @@
  * Predefined investment strategies from 5 different LLM models
  */
 
-export type LLMProvider = 'gemini' | 'claude' | 'perplexity' | 'chatgpt' | 'grok';
+export type LLMProvider = 
+  | 'gemini' | 'claude' | 'perplexity' | 'chatgpt' | 'grok' 
+  | 'claude-trading' | 'chatgpt-trading' | 'gemini-trading';
 
 export type AssetCategory = 'stock' | 'etf' | 'crypto' | 'bond' | 'reit' | 'commodity';
 
@@ -155,6 +157,33 @@ const grokAllocation: LLMAllocation = {
 };
 
 /**
+ * TRADING PORTFOLIOS - 100% Cash init for manual trading
+ */
+const claudeTradingAllocation: LLMAllocation = {
+  provider: 'claude-trading',
+  displayName: 'Claude',
+  description: 'Daily active trading on US/EU markets',
+  strategy: 'Active Trading',
+  allocations: [],
+};
+
+const chatgptTradingAllocation: LLMAllocation = {
+  provider: 'chatgpt-trading',
+  displayName: 'ChatGPT',
+  description: 'Daily active trading on US/EU markets',
+  strategy: 'Active Trading',
+  allocations: [],
+};
+
+const geminiTradingAllocation: LLMAllocation = {
+  provider: 'gemini-trading',
+  displayName: 'Gemini',
+  description: 'Daily active trading on US/EU markets',
+  strategy: 'Active Trading',
+  allocations: [],
+};
+
+/**
  * All LLM allocations indexed by provider
  */
 export const LLM_ALLOCATIONS: Record<LLMProvider, LLMAllocation> = {
@@ -163,12 +192,18 @@ export const LLM_ALLOCATIONS: Record<LLMProvider, LLMAllocation> = {
   perplexity: perplexityAllocation,
   chatgpt: chatgptAllocation,
   grok: grokAllocation,
+  'claude-trading': claudeTradingAllocation,
+  'chatgpt-trading': chatgptTradingAllocation,
+  'gemini-trading': geminiTradingAllocation,
 };
 
 /**
  * Ordered list of all providers for consistent display
  */
-export const LLM_PROVIDERS: LLMProvider[] = ['gemini', 'claude', 'perplexity', 'chatgpt', 'grok'];
+export const LLM_PROVIDERS: LLMProvider[] = [
+  'gemini', 'claude', 'perplexity', 'chatgpt', 'grok',
+  'claude-trading', 'chatgpt-trading', 'gemini-trading'
+];
 
 /**
  * Initial portfolio balance for each LLM

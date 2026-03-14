@@ -96,6 +96,24 @@ export function useToggleKillSwitch() {
 // Analysis Hooks
 // ============================================================================
 
+export function useResetCoach() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/coach/config', { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to reset coach portfolio');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coachKeys.all });
+    },
+  });
+}
+
 export function useRunAnalysis() {
   const queryClient = useQueryClient();
 
@@ -250,7 +268,7 @@ export function useCreatePaperTrade() {
       signalId?: string;
       symbol: string;
       assetType: 'stock' | 'etf' | 'crypto';
-      market?: 'us' | 'europe' | 'colombia';
+      market?: 'us' | 'europe' | 'latam';
       side: 'BUY' | 'SELL';
       entryPrice: number;
       sizeUsd: number;

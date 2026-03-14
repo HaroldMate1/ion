@@ -13,6 +13,7 @@ export {
   analyzeNews,
   setNewsProvider,
   getNewsProvider,
+  finnhubNewsProvider,
   type NewsProvider,
   type NewsSentiment,
 } from './agents/newsAgent';

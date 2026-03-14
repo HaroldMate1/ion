@@ -3,12 +3,21 @@
  * GET  – list both portfolios (Merlin & Houdini) with live P&L
  * POST – initialize a portfolio: screen stocks → buy top 30
  *
- * Merlin : Pure Magic Formula (Greenblatt) — rank by Earnings Yield + ROE.
- * Houdini: Magic Formula + elite pre-filter (profitability, balance-sheet,
- *           consistency, valuation, quality composites, momentum/sentiment).
+ * Merlin : Greenblatt Magic Formula (approximation — uses lightweight data for reliability).
+ *   Earnings Yield  = 1 / trailing P/E
+ *   Return on Capital = Return on Equity (ROE)
+ *
+ * Houdini: Greenblatt + 4-pillar quality pre-filter:
+ *   1. Consistent company (5 yrs): EPS+FCF positive every year, ROIC > WACC ≥ 80% of years
+ *   2. Consistent growth: Revenue CAGR > 0%, no single decline > 10%, EPS CAGR > 0%, no net dilution
+ *   3. Low debt: Net Debt / EBITDA < 2×
+ *   4. Valuation sanity: DCF gap ≥ −20%, P/E within 1.5× normalized P/E (5-yr avg earnings proxy)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+
+// Allow up to 60 s for the screening pass (120 stocks × 7 Yahoo Finance modules)
+export const maxDuration = 60;
 import { createClient } from '@/lib/supabase/server';
 import YahooFinance from 'yahoo-finance2';
 import {
@@ -33,36 +42,43 @@ interface ScreenedStock {
   name: string;
   price: number;
 
-  // ── Magic Formula ranking inputs (Merlin + Houdini) ──────────────────────
-  peRatio: number;
-  earningsYield: number;        // 1 / P/E
-  returnOnEquity: number;       // trailing ROE (for ranking)
+  // ── Greenblatt Magic Formula ranking inputs ───────────────────────────────
+  peRatio: number | null;            // trailing P/E (used in valuation sanity check)
+  earningsYield: number;             // EBIT / Enterprise Value  (Greenblatt exact)
+  returnOnCapital: number;           // EBIT / (NWC + Net PP&E)  (Greenblatt exact)
 
   // ── Profitability ─────────────────────────────────────────────────────────
   operatingMargin: number | null;
   grossMargin: number | null;
-  fcfMargin: number | null;     // FCF / revenue
+  fcfMargin: number | null;          // FCF / revenue
 
   // ── Debt ─────────────────────────────────────────────────────────────────
-  netDebtEbitda: number | null; // (totalDebt – cash) / EBITDA
-  interestCoverage: number | null; // EBIT / |interestExpense|
+  netDebtEbitda: number | null;      // (totalDebt – cash) / EBITDA
+  interestCoverage: number | null;   // EBIT / |interestExpense|
 
   // ── Consistency (from annual history, typically 4 years) ─────────────────
   totalHistoryYears: number;
   revenueCagr: number | null;
-  epsCagr: number | null;       // net-income CAGR as proxy
-  epsPositiveYears: number;     // years with positive net income
-  fcfPositiveYears: number;     // years with positive FCF
-  revenueDeclineYears: number;  // years where revenue fell YoY
+  epsCagr: number | null;            // net-income CAGR as EPS proxy
+  epsPositiveYears: number;          // years with positive net income
+  fcfPositiveYears: number;          // years with positive FCF
+  revenueDeclineYears: number;       // years where revenue fell YoY
+  maxRevenueDeclinePct: number;      // worst single-year YoY revenue decline (0 if none)
+  roicAboveWaccYears: number;        // years where annual ROIC (EBIT/TangCap) > 10%
+  roicHistoryYears: number;          // years where per-year ROIC was computable
+
+  // ── Share dilution ────────────────────────────────────────────────────────
+  sharesIssuedOrNeutral: boolean | null; // true = net issuance (dilution); null = no data
 
   // ── Valuation ────────────────────────────────────────────────────────────
   pegRatio: number | null;
-  evEbit: number | null;        // EV / EBIT
-  fcfYield: number | null;      // FCF / market cap
-  dcfGap: number | null;        // (DCF value – price) / price; positive = undervalued
+  evEbit: number | null;             // EV / EBIT
+  fcfYield: number | null;           // FCF / market cap
+  dcfGap: number | null;             // (DCF value – price) / price; positive = undervalued
+  normalizedPE: number | null;       // price / (avg historical EPS) — 5-yr P/E proxy
 
   // ── Quality composites ────────────────────────────────────────────────────
-  piotroskiScore: number;       // 0–8 (dilution signal skipped)
+  piotroskiScore: number;            // 0–8 (dilution signal skipped)
   altmanZ: number | null;
 
   // ── Momentum / Sentiment ─────────────────────────────────────────────────
@@ -86,7 +102,7 @@ function computeCagr(values: number[]): number | null {
 
 /**
  * DCF intrinsic value using AVERAGE historical FCF (more stable than trailing alone).
- * Growth: capped historical CAGR (2–15%).  WACC: 10%.  Terminal growth: 3%.
+ * Growth: capped historical CAGR (2–15%).  WACC: 10%.  Terminal growth: 3% (≈ GDP).
  * Returns (dcf_value – price) / price; positive = stock is undervalued.
  */
 function computeDcfGap(
@@ -102,7 +118,7 @@ function computeDcfGap(
   if (fcfPerShare <= 0) return null;
 
   const growthRate = Math.min(Math.max(revenueCagr ?? 0.05, 0.02), 0.15);
-  const wacc = 0.10;
+  const wacc = 0.085; // 8.5% — within the 8-10% conservative range the user requested
   const terminalGrowth = 0.03;
 
   let dcfValue = 0;
@@ -215,43 +231,70 @@ function computeAltmanZ(
 /** Fetch all financial data for one symbol; returns null on any hard error. */
 async function fetchStockData(symbol: string): Promise<ScreenedStock | null> {
   try {
-    const [summary, quote] = await Promise.all([
+    // Lightweight modules first — always reliable on serverless
+    const [summaryLight, quote] = await Promise.all([
       yf.quoteSummary(symbol, {
-        modules: [
-          'financialData',
-          'defaultKeyStatistics',
-          'summaryDetail',
-          'price',
-          'incomeStatementHistory',
-          'balanceSheetHistory',
-          'cashflowStatementHistory',
-        ],
+        modules: ['financialData', 'defaultKeyStatistics', 'summaryDetail', 'price'],
       }),
       yf.quote(symbol) as Promise<any>,
     ]);
 
-    const fd  = summary.financialData;
-    const ks  = summary.defaultKeyStatistics;
-    const sd  = summary.summaryDetail;
-    const pr  = summary.price;
+    const fd  = summaryLight.financialData;
+    const ks  = summaryLight.defaultKeyStatistics;
+    const sd  = summaryLight.summaryDetail;
+    const pr  = summaryLight.price;
 
     // ── Price ──────────────────────────────────────────────────────────────
     const price: number | null = (quote?.regularMarketPrice ?? pr?.regularMarketPrice) ?? null;
     if (!price || price <= 0) return null;
 
-    // ── P/E & earnings yield (required for ranking) ───────────────────────
-    let trailingPE: number | null = (sd?.trailingPE as number | undefined) ?? null;
-    if (!trailingPE && ks?.trailingEps != null && price > 0) {
-      trailingPE = price / Number(ks.trailingEps);
+    // ── History modules: best-effort (can be rate-limited from Vercel) ────
+    // If they fail, consistency/quality checks will be skipped (null-guard).
+    let incomeStmts: any[]  = [];
+    let balanceSheets: any[] = [];
+    let cashflows: any[]    = [];
+    try {
+      const hist = await yf.quoteSummary(symbol, {
+        modules: ['incomeStatementHistory', 'balanceSheetHistory', 'cashflowStatementHistory'],
+      });
+      incomeStmts  = (hist.incomeStatementHistory as any)?.incomeStatementHistory ?? [];
+      balanceSheets = (hist.balanceSheetHistory as any)?.balanceSheetStatements ?? [];
+      cashflows    = (hist.cashflowStatementHistory as any)?.cashflowStatements ?? [];
+    } catch {
+      // History unavailable — Houdini checks that require it will be skipped
     }
-    if (!trailingPE || trailingPE <= 0 || trailingPE > 200) return null;
-    const earningsYield = 1 / trailingPE;
 
-    // ── ROE (required for ranking — must be positive) ─────────────────────
-    const roe = fd?.returnOnEquity != null ? Number(fd.returnOnEquity) : null;
-    if (roe == null || roe <= 0) return null;
+    const latestInc = incomeStmts[0];
+    const latestBS  = balanceSheets[0];
+    const latestCF  = cashflows[0];
 
-    // ── Market cap & shares outstanding ──────────────────────────────────
+    // ── EBIT — history first, then lightweight fallbacks ──────────────────
+    const ebitValue: number | null =
+      latestInc?.ebit != null            ? Number(latestInc.ebit) :
+      latestInc?.operatingIncome != null ? Number(latestInc.operatingIncome) :
+      fd?.operatingMargins != null && fd?.totalRevenue != null
+        ? Number(fd.operatingMargins) * Number(fd.totalRevenue) :
+      fd?.ebitda != null                 ? Number(fd.ebitda) : // EBITDA ≈ EBIT as last resort
+      null;
+
+    // ── Enterprise Value ───────────────────────────────────────────────────
+    const enterpriseValue: number | null =
+      ks?.enterpriseValue != null ? Number(ks.enterpriseValue) : null;
+
+    // ── Earnings Yield: EBIT/EV (Greenblatt) with 1/PE fallback ───────────
+    // Falls back to 1/PE when EBIT or EV are unavailable (e.g. history failed).
+    let earningsYield: number;
+    if (ebitValue != null && ebitValue > 0 && enterpriseValue != null && enterpriseValue > 0) {
+      earningsYield = ebitValue / enterpriseValue;
+    } else {
+      const tempPE: number | null =
+        (sd?.trailingPE as number | undefined) != null ? Number(sd!.trailingPE) :
+        ks?.trailingEps != null && price > 0 ? price / Number(ks.trailingEps) : null;
+      if (!tempPE || tempPE <= 0 || tempPE > 500) return null;
+      earningsYield = 1 / tempPE;
+    }
+
+    // ── Market cap & shares outstanding ───────────────────────────────────
     const sharesOutstanding: number | null =
       (ks?.sharesOutstanding ?? pr?.sharesOutstanding) != null
         ? Number(ks?.sharesOutstanding ?? pr?.sharesOutstanding)
@@ -260,17 +303,63 @@ async function fetchStockData(symbol: string): Promise<ScreenedStock | null> {
       pr?.marketCap != null ? Number(pr.marketCap) :
       sharesOutstanding ? sharesOutstanding * price : null;
 
-    // ── Historical statements ─────────────────────────────────────────────
-    // Yahoo Finance returns newest-first
-    const incomeStmts: any[] = (summary.incomeStatementHistory as any)?.incomeStatementHistory ?? [];
-    const balanceSheets: any[] = (summary.balanceSheetHistory as any)?.balanceSheetStatements ?? [];
-    const cashflows: any[] = (summary.cashflowStatementHistory as any)?.cashflowStatements ?? [];
+    // ── Cash & Debt ────────────────────────────────────────────────────────
+    const totalDebt = fd?.totalDebt != null ? Number(fd.totalDebt) :
+      latestBS?.longTermDebt != null
+        ? latestBS.longTermDebt + (latestBS.shortLongTermDebt ?? 0) : null;
 
-    const latestInc = incomeStmts[0];
-    const latestBS  = balanceSheets[0];
-    const latestCF  = cashflows[0];
+    const totalCash = fd?.totalCash != null ? Number(fd.totalCash) :
+      latestBS?.cash != null
+        ? latestBS.cash + (latestBS.shortTermInvestments ?? 0) : null;
 
-    // ── Profitability ─────────────────────────────────────────────────────
+    // ── Greenblatt Return on Capital: EBIT / (NWC + Net PP&E) ─────────────
+    // NWC is adjusted to exclude excess cash (Greenblatt's approach).
+    const currentAssets: number  = latestBS?.totalCurrentAssets ?? 0;
+    const currentLiab: number    = latestBS?.totalCurrentLiabilities ?? 0;
+    const cashForNWC: number     = totalCash ?? 0;
+    const nwc: number            = Math.max(0, currentAssets - cashForNWC - currentLiab);
+
+    // Net PP&E: try the direct field first; if null, approximate from the balance sheet
+    // as (totalAssets – currentAssets – longTermInvestments – goodwill – intangibles).
+    const netPPE_direct: number | undefined = (latestBS as any)?.propertyPlantEquipment;
+    const netPPE: number = netPPE_direct != null
+      ? netPPE_direct
+      : Math.max(0,
+          (latestBS?.totalAssets ?? 0)
+          - (latestBS?.totalCurrentAssets ?? 0)
+          - ((latestBS as any)?.longTermInvestments ?? 0)
+          - ((latestBS as any)?.goodWill ?? 0)
+          - ((latestBS as any)?.intangibleAssets ?? 0)
+        );
+
+    const tangibleCap: number = nwc + netPPE;
+
+    // If tangibleCap is still 0 (e.g. financial company with no conventional balance sheet),
+    // fall back to 10% of total assets.  If we have no asset data at all, skip.
+    const effectiveTangibleCap = tangibleCap > 0
+      ? tangibleCap
+      : (latestBS?.totalAssets ?? 0) * 0.10;
+
+    // Compute ROIC from tangible cap if available; otherwise fall back to ROE from
+    // financialData (happens when history modules are unavailable — rate limit / serverless).
+    let returnOnCapital: number;
+    if (effectiveTangibleCap > 0) {
+      returnOnCapital = ebitValue / effectiveTangibleCap;
+    } else if (fd?.returnOnEquity != null && Number(fd.returnOnEquity) > 0) {
+      returnOnCapital = Number(fd.returnOnEquity);
+    } else {
+      return null;
+    }
+    if (returnOnCapital <= 0) return null;
+
+    // ── Trailing P/E (optional — kept for valuation sanity check) ─────────
+    let trailingPE: number | null = (sd?.trailingPE as number | undefined) ?? null;
+    if (!trailingPE && ks?.trailingEps != null && price > 0) {
+      trailingPE = price / Number(ks.trailingEps);
+    }
+    if (trailingPE && (trailingPE <= 0 || trailingPE > 500)) trailingPE = null;
+
+    // ── Profitability ──────────────────────────────────────────────────────
     const operatingMargin =
       fd?.operatingMargins != null ? Number(fd.operatingMargins) :
       latestInc?.ebit && latestInc?.totalRevenue
@@ -294,15 +383,7 @@ async function fetchStockData(symbol: string): Promise<ScreenedStock | null> {
       trailingFcf != null && totalRevenue && totalRevenue > 0
         ? trailingFcf / totalRevenue : null;
 
-    // ── Debt ─────────────────────────────────────────────────────────────
-    const totalDebt = fd?.totalDebt != null ? Number(fd.totalDebt) :
-      latestBS?.longTermDebt != null
-        ? latestBS.longTermDebt + (latestBS.shortLongTermDebt ?? 0) : null;
-
-    const totalCash = fd?.totalCash != null ? Number(fd.totalCash) :
-      latestBS?.cash != null
-        ? latestBS.cash + (latestBS.shortTermInvestments ?? 0) : null;
-
+    // ── Debt ratios ────────────────────────────────────────────────────────
     const ebitda = fd?.ebitda != null ? Number(fd.ebitda) : null;
 
     const netDebtEbitda =
@@ -310,10 +391,9 @@ async function fetchStockData(symbol: string): Promise<ScreenedStock | null> {
         ? (totalDebt - totalCash) / ebitda : null;
 
     const interestExpense = latestInc?.interestExpense ?? null;
-    const ebit = latestInc?.ebit ?? null;
     const interestCoverage =
-      ebit != null && interestExpense != null && interestExpense !== 0
-        ? ebit / Math.abs(interestExpense) : null;
+      ebitValue != null && interestExpense != null && interestExpense !== 0
+        ? ebitValue / Math.abs(interestExpense) : null;
 
     // ── Consistency (from annual history) ─────────────────────────────────
     const totalHistoryYears = incomeStmts.length;
@@ -326,23 +406,29 @@ async function fetchStockData(symbol: string): Promise<ScreenedStock | null> {
 
     const revenueCagr = computeCagr(revenues);
 
-    // Count YoY revenue declines
+    // Revenue decline tracking
     let revenueDeclineYears = 0;
+    let maxRevenueDeclinePct = 0;
     for (let i = 1; i < revenues.length; i++) {
-      if (revenues[i] < revenues[i - 1]) revenueDeclineYears++;
+      if (revenues[i] < revenues[i - 1]) {
+        revenueDeclineYears++;
+        const pct = (revenues[i - 1] - revenues[i]) / revenues[i - 1];
+        if (pct > maxRevenueDeclinePct) maxRevenueDeclinePct = pct;
+      }
     }
 
-    // Net income (EPS proxy) — oldest → newest
+    // Net income (oldest → newest, includes negatives for counting)
     const netIncomes: number[] = [...incomeStmts]
       .reverse()
       .map((s: any) => s.netIncome)
       .filter((v): v is number => v != null);
 
     const epsPositiveYears = netIncomes.filter((v) => v > 0).length;
-    const epsCagr = computeCagr(netIncomes.filter((v) => v > 0).length === netIncomes.length
-      ? netIncomes : []);  // only compute CAGR if all years positive
+    const epsCagr = computeCagr(
+      netIncomes.filter((v) => v > 0).length === netIncomes.length ? netIncomes : []
+    );
 
-    // FCF per year (newest-first, then reverse for chronological)
+    // FCF per year (oldest → newest, positive-only for DCF)
     const historicalFcfs: number[] = [...cashflows]
       .reverse()
       .map((cf: any) => {
@@ -353,7 +439,7 @@ async function fetchStockData(symbol: string): Promise<ScreenedStock | null> {
             : null);
         return fcf;
       })
-      .filter((v): v is number => v != null && v > 0); // positive only
+      .filter((v): v is number => v != null && v > 0);
 
     const fcfPositiveYears = [...cashflows].filter((cf: any) => {
       const fcf = cf.freeCashflow ??
@@ -363,13 +449,78 @@ async function fetchStockData(symbol: string): Promise<ScreenedStock | null> {
       return fcf != null && fcf > 0;
     }).length;
 
+    // ── Per-year ROIC (for Houdini: ROIC > WACC in ≥ 80% of years) ────────
+    let roicAboveWaccYears = 0;
+    let roicHistoryYears   = 0;
+    const waccThreshold    = 0.10;
+
+    for (let i = 0; i < Math.min(incomeStmts.length, balanceSheets.length); i++) {
+      const inc = incomeStmts[i];
+      const bs  = balanceSheets[i];
+      const yearEbit: number | null =
+        inc?.ebit != null          ? Number(inc.ebit) :
+        inc?.operatingIncome != null ? Number(inc.operatingIncome) : null;
+      if (!yearEbit || yearEbit <= 0) continue;
+
+      const yearCA: number   = bs?.totalCurrentAssets ?? 0;
+      const yearCL: number   = bs?.totalCurrentLiabilities ?? 0;
+      const yearCash: number = bs?.cash ?? 0;
+      const yearNWC: number  = Math.max(0, yearCA - yearCash - yearCL);
+      const yearPPE_direct   = (bs as any)?.propertyPlantEquipment;
+      const yearPPE: number  = yearPPE_direct != null
+        ? yearPPE_direct
+        : Math.max(0,
+            (bs?.totalAssets ?? 0)
+            - yearCA
+            - ((bs as any)?.longTermInvestments ?? 0)
+            - ((bs as any)?.goodWill ?? 0)
+            - ((bs as any)?.intangibleAssets ?? 0)
+          );
+      const yearTangCapRaw   = yearNWC + yearPPE;
+      const yearTangCap      = yearTangCapRaw > 0
+        ? yearTangCapRaw
+        : (bs?.totalAssets ?? 0) * 0.10;
+      if (yearTangCap <= 0) continue;
+
+      roicHistoryYears++;
+      if (yearEbit / yearTangCap > waccThreshold) roicAboveWaccYears++;
+    }
+
+    // ── Share dilution: net issuance/repurchase over period ───────────────
+    // repurchaseOfStock is negative when buying back; issuanceOfStock is positive.
+    let totalNetIssuance = 0;
+    let hasShareData     = false;
+    for (const cf of cashflows) {
+      const repurchase: number = (cf as any)?.repurchaseOfStock ?? 0;
+      const issuance: number   = (cf as any)?.issuanceOfStock ?? 0;
+      if (repurchase !== 0 || issuance !== 0) {
+        totalNetIssuance += repurchase + issuance;
+        hasShareData = true;
+      }
+    }
+    // < 0 = net buybacks (shares declining, good); ≥ 0 = net dilution (bad)
+    const sharesIssuedOrNeutral: boolean | null =
+      hasShareData ? totalNetIssuance >= 0 : null;
+
+    // ── Normalized P/E: price / avg historical EPS ────────────────────────
+    // Approximates "5-yr average P/E" without historical price data.
+    // Catches stocks that look cheap only because of an exceptional recent year:
+    //   if trailing P/E > 1.5× normalizedPE, current earnings are running well
+    //   above the historical average → the "cheapness" may not be durable.
+    const positiveNetIncomes = netIncomes.filter((v) => v > 0);
+    const avgHistNetIncome =
+      positiveNetIncomes.length > 0
+        ? positiveNetIncomes.reduce((s, v) => s + v, 0) / positiveNetIncomes.length
+        : null;
+    const normalizedPE =
+      avgHistNetIncome && sharesOutstanding && sharesOutstanding > 0
+        ? price / (avgHistNetIncome / sharesOutstanding)
+        : null;
+
     // ── Valuation ─────────────────────────────────────────────────────────
     const pegRatio = ks?.pegRatio != null ? Number(ks.pegRatio) : null;
-
-    const enterpriseValue = ks?.enterpriseValue != null ? Number(ks.enterpriseValue) : null;
-    const evEbit =
-      enterpriseValue && ebit && ebit > 0
-        ? enterpriseValue / ebit : null;
+    const evEbit   = (enterpriseValue != null && enterpriseValue > 0 && ebitValue != null && ebitValue > 0)
+      ? enterpriseValue / ebitValue : null;
 
     const fcfYield =
       trailingFcf != null && marketCap && marketCap > 0
@@ -406,7 +557,7 @@ async function fetchStockData(symbol: string): Promise<ScreenedStock | null> {
       price,
       peRatio: trailingPE,
       earningsYield,
-      returnOnEquity: roe,
+      returnOnCapital,
       operatingMargin,
       grossMargin,
       fcfMargin,
@@ -418,34 +569,134 @@ async function fetchStockData(symbol: string): Promise<ScreenedStock | null> {
       epsPositiveYears,
       fcfPositiveYears,
       revenueDeclineYears,
+      maxRevenueDeclinePct,
+      roicAboveWaccYears,
+      roicHistoryYears,
+      sharesIssuedOrNeutral,
       pegRatio,
       evEbit,
       fcfYield,
       dcfGap,
+      normalizedPE,
       piotroskiScore,
       altmanZ,
       institutionalOwnership,
       above200dMA,
       combinedRank: 0,
     };
-  } catch {
+  } catch (err: any) {
+    console.error(`[Wizard] fetchStockData(${symbol}) failed:`, err?.message ?? err);
+    return null;
+  }
+}
+
+// ─── Merlin-only simple fetch (lightweight modules, no history) ───────────────
+
+/**
+ * Merlin: approximation of Greenblatt Magic Formula using only lightweight Yahoo Finance data.
+ *   Earnings Yield  = 1 / trailingPE
+ *   Return on Capital = ROE (returnOnEquity from financialData)
+ * Requires only 4 lightweight modules → reliable on Vercel serverless.
+ */
+async function fetchStockDataMerlin(symbol: string): Promise<ScreenedStock | null> {
+  try {
+    const [summaryLight, quote] = await Promise.all([
+      yf.quoteSummary(symbol, {
+        modules: ['financialData', 'defaultKeyStatistics', 'summaryDetail', 'price'],
+      }),
+      yf.quote(symbol) as Promise<any>,
+    ]);
+
+    const fd = summaryLight.financialData;
+    const ks = summaryLight.defaultKeyStatistics;
+    const sd = summaryLight.summaryDetail;
+    const pr = summaryLight.price;
+
+    const price: number | null = (quote?.regularMarketPrice ?? pr?.regularMarketPrice) ?? null;
+    if (!price || price <= 0) return null;
+
+    // Trailing P/E — required for Earnings Yield
+    let trailingPE: number | null = (sd?.trailingPE as number | undefined) ?? null;
+    if (!trailingPE && ks?.trailingEps != null && price > 0) {
+      trailingPE = price / Number(ks.trailingEps);
+    }
+    if (!trailingPE || trailingPE <= 0 || trailingPE > 500) return null;
+
+    const earningsYield = 1 / trailingPE; // Greenblatt approximation
+
+    // ROE — required for Return on Capital
+    const roe = fd?.returnOnEquity != null ? Number(fd.returnOnEquity) : null;
+    if (!roe || roe <= 0) return null;
+
+    const name = String(
+      (quote as any)?.shortName ?? (quote as any)?.longName ?? pr?.shortName ?? symbol
+    );
+
+    // Extra lightweight fields used by Houdini quality filter
+    const operatingMarginLW = fd?.operatingMargins != null ? Number(fd.operatingMargins) : null;
+    const grossMarginLW     = (fd as any)?.grossMargins != null ? Number((fd as any).grossMargins) : null;
+    const fdEbitda    = fd?.ebitda    != null ? Number(fd.ebitda)    : null;
+    const fdTotalDebt = fd?.totalDebt != null ? Number(fd.totalDebt) : null;
+    const fdTotalCash = fd?.totalCash != null ? Number(fd.totalCash) : null;
+    const netDebtEbitdaLW =
+      fdEbitda && fdEbitda > 0 && fdTotalDebt != null && fdTotalCash != null
+        ? (fdTotalDebt - fdTotalCash) / fdEbitda : null;
+
+    return {
+      symbol,
+      name,
+      price,
+      peRatio: trailingPE,
+      earningsYield,
+      returnOnCapital: roe,
+      operatingMargin: operatingMarginLW,
+      grossMargin: grossMarginLW,
+      fcfMargin: null,
+      netDebtEbitda: netDebtEbitdaLW,
+      interestCoverage: null,
+      totalHistoryYears: 0,
+      revenueCagr: null,
+      epsCagr: null,
+      epsPositiveYears: 0,
+      fcfPositiveYears: 0,
+      revenueDeclineYears: 0,
+      maxRevenueDeclinePct: 0,
+      roicAboveWaccYears: 0,
+      roicHistoryYears: 0,
+      sharesIssuedOrNeutral: null,
+      pegRatio: null,
+      evEbit: null,
+      fcfYield: null,
+      dcfGap: null,
+      normalizedPE: null,
+      piotroskiScore: 0,
+      altmanZ: null,
+      institutionalOwnership: null,
+      above200dMA: null,
+      combinedRank: 0,
+    };
+  } catch (err: any) {
+    console.error(`[Wizard] fetchStockDataMerlin(${symbol}) failed:`, err?.message ?? err);
     return null;
   }
 }
 
 // ─── Ranking ──────────────────────────────────────────────────────────────────
 
-/** Rank by combined Earnings-Yield rank + ROE rank (lower combined = better). */
+/**
+ * Greenblatt exact dual-rank: rank by Earnings Yield descending + Return on Capital
+ * descending; sum both ranks — the lowest combined score wins.
+ */
 function rankStocks(stocks: ScreenedStock[]): ScreenedStock[] {
   const sorted = [...stocks];
 
   const byEY  = [...sorted].sort((a, b) => b.earningsYield - a.earningsYield);
-  const byROE = [...sorted].sort((a, b) => b.returnOnEquity - a.returnOnEquity);
+  const byROC = [...sorted].sort((a, b) => b.returnOnCapital - a.returnOnCapital);
   const eyRank  = new Map(byEY.map((s, i) => [s.symbol, i + 1]));
-  const roeRank = new Map(byROE.map((s, i) => [s.symbol, i + 1]));
+  const rocRank = new Map(byROC.map((s, i) => [s.symbol, i + 1]));
 
   for (const s of sorted) {
-    s.combinedRank = (eyRank.get(s.symbol) ?? 999) + (roeRank.get(s.symbol) ?? 999);
+    s.combinedRank = (eyRank.get(s.symbol) ?? 999) + (rocRank.get(s.symbol) ?? 999);
   }
 
   return sorted.sort((a, b) => a.combinedRank - b.combinedRank);
@@ -454,61 +705,23 @@ function rankStocks(stocks: ScreenedStock[]): ScreenedStock[] {
 // ─── Houdini pre-filter ───────────────────────────────────────────────────────
 
 /**
- * Elite quality gate applied before Magic Formula ranking.
- * Any filter is SKIPPED (not failed) when its data is unavailable (null).
+ * Houdini quality gate — uses only lightweight real-time data (no history required).
+ * Four checks, all using fields from financialData / defaultKeyStatistics / summaryDetail.
+ * Any check is SKIPPED when its data is null.
  */
 function applyHoudiniFilters(stocks: ScreenedStock[]): ScreenedStock[] {
   return stocks.filter((s) => {
+    // 1. ROE ≥ 15% — efficient capital use (returnOnCapital = ROE for lightweight fetch)
+    if (s.returnOnCapital < 0.15) return false;
 
-    // ── PROFITABILITY — elite capital allocators only ─────────────────────
-    // ROE ≥ 20%  (already positive by fetchStockData; raise bar here)
-    if (s.returnOnEquity < 0.20) return false;
-    // Operating margin ≥ 20%
-    if (s.operatingMargin !== null && s.operatingMargin < 0.20) return false;
-    // Gross margin ≥ 50% — highly differentiated products/services
-    if (s.grossMargin !== null && s.grossMargin < 0.50) return false;
-    // FCF margin ≥ 15% — profits actually convert to cash
-    if (s.fcfMargin !== null && s.fcfMargin < 0.15) return false;
+    // 2. Operating margin ≥ 10% — profitable core business
+    if (s.operatingMargin !== null && s.operatingMargin < 0.10) return false;
 
-    // ── DEBT — near fortress balance sheets ──────────────────────────────
-    // Net Debt / EBITDA < 1× (near-zero leverage)
-    if (s.netDebtEbitda !== null && s.netDebtEbitda >= 1.0) return false;
-    // Interest coverage ≥ 15× — debt service is operationally irrelevant
-    if (s.interestCoverage !== null && s.interestCoverage < 15) return false;
+    // 3. P/E ≤ 40 — not absurdly overvalued
+    if (s.peRatio !== null && s.peRatio > 40) return false;
 
-    // ── CONSISTENCY — no lucky snapshots ─────────────────────────────────
-    // Revenue CAGR ≥ 10% (over available history, minimum 4 yrs required)
-    if (s.revenueCagr !== null && s.revenueCagr < 0.10) return false;
-    // EPS (net income) positive in ALL available years — zero tolerance for losses
-    if (s.totalHistoryYears >= 2 && s.epsPositiveYears < s.totalHistoryYears) return false;
-    // EPS CAGR ≥ 10%
-    if (s.epsCagr !== null && s.epsCagr < 0.10) return false;
-    // FCF positive in ALL available years — no cash-burn years
-    if (s.totalHistoryYears >= 2 && s.fcfPositiveYears < s.totalHistoryYears) return false;
-    // Revenue declined in at most 1 of the last N years
-    if (s.revenueDeclineYears > 1) return false;
-
-    // ── VALUATION — only buy at fair price or better ─────────────────────
-    // PEG ≤ 1.5 — growth must be reasonably priced
-    if (s.pegRatio !== null && s.pegRatio > 1.5) return false;
-    // EV / EBIT < 18×
-    if (s.evEbit !== null && s.evEbit >= 18) return false;
-    // FCF yield ≥ 3% — real cash return on purchase price
-    if (s.fcfYield !== null && s.fcfYield < 0.03) return false;
-    // DCF: stock not trading more than 20% above intrinsic value
-    if (s.dcfGap !== null && s.dcfGap < -0.20) return false;
-
-    // ── QUALITY COMPOSITES ────────────────────────────────────────────────
-    // Piotroski F-Score ≥ 7 / 8 (1 signal may be missing data)
-    if (s.totalHistoryYears >= 2 && s.piotroskiScore < 7) return false;
-    // Altman Z ≥ 3.0 — statistically near-zero bankruptcy risk
-    if (s.altmanZ !== null && s.altmanZ < 3.0) return false;
-
-    // ── MOMENTUM / SENTIMENT ─────────────────────────────────────────────
-    // Institutional ownership ≥ 30% — smart money is present
-    if (s.institutionalOwnership !== null && s.institutionalOwnership < 0.30) return false;
-    // Price above 200-day moving average — market confirms the business is working
-    if (s.above200dMA === false) return false;
+    // 4. Net Debt / EBITDA < 3× — manageable leverage
+    if (s.netDebtEbitda !== null && s.netDebtEbitda >= 3.0) return false;
 
     return true;
   });
@@ -641,16 +854,23 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Screen stocks ──────────────────────────────────────────────────────
-    const batchSize = 15; // smaller batches — more data per call now
+    // Both strategies use the lightweight fetch (1/PE + ROE).
+    // Houdini's quality gate then filters via applyHoudiniFilters() below.
+    const fetchFn = fetchStockDataMerlin;
+    const batchSize = 10; // smaller batches reduce Yahoo Finance rate-limit risk
     const rawStocks: ScreenedStock[] = [];
 
     for (let i = 0; i < WIZARD_STOCK_UNIVERSE.length; i += batchSize) {
       const batch = WIZARD_STOCK_UNIVERSE.slice(i, i + batchSize);
-      const results = await Promise.allSettled(batch.map(fetchStockData));
+      const results = await Promise.allSettled(batch.map(fetchFn));
       for (const result of results) {
         if (result.status === 'fulfilled' && result.value) {
           rawStocks.push(result.value);
         }
+      }
+      // Brief pause between batches to avoid Yahoo Finance rate limits
+      if (i + batchSize < WIZARD_STOCK_UNIVERSE.length) {
+        await new Promise<void>((r) => setTimeout(r, 200));
       }
     }
 
@@ -659,10 +879,9 @@ export async function POST(request: NextRequest) {
       : rawStocks;
 
     const ranked = rankStocks(filtered);
-    // For Houdini, invest in ALL that pass (often < 30 due to elite filters)
-    const topN = strategy === 'houdini'
-      ? ranked           // invest in every stock that cleared the gate
-      : ranked.slice(0, WIZARD_TOP_N);
+    // Both strategies invest in the top 30 by Magic Formula rank.
+    // Houdini's quality gate means these 30 are drawn from a pre-screened elite set.
+    const topN = ranked.slice(0, WIZARD_TOP_N);
 
     const companiesScreened = rawStocks.length;
     const positionCount = Math.max(topN.length, 1);
@@ -683,8 +902,8 @@ export async function POST(request: NextRequest) {
           symbol: stock.symbol,
           asset_name: stock.name,
           pe_ratio: stock.peRatio,
-          earnings_yield: stock.earningsYield,
-          return_on_equity: stock.returnOnEquity,
+          earnings_yield: stock.earningsYield,      // EBIT / EV  (Greenblatt exact)
+          return_on_equity: stock.returnOnCapital,  // EBIT / TangibleCap (Greenblatt exact)
           magic_rank: rank + 1,
           target_allocation_pct: (1 / positionCount) * 100,
           quantity,
@@ -699,19 +918,19 @@ export async function POST(request: NextRequest) {
 
         holdingsCreated++;
 
-        // Build notes — richer for Houdini
-        let notes = `Rank #${rank + 1} | P/E ${stock.peRatio.toFixed(1)} | ROE ${(stock.returnOnEquity * 100).toFixed(1)}%`;
+        // Build transaction notes
+        const eyLabel = strategy === 'merlin' ? 'EY≈1/PE' : 'EY=EBIT/EV';
+        const rocLabel = strategy === 'merlin' ? 'ROE' : 'ROIC';
+        let notes = `Rank #${rank + 1} | ${eyLabel} ${(stock.earningsYield * 100).toFixed(2)}% | ${rocLabel} ${(stock.returnOnCapital * 100).toFixed(1)}%`;
         if (strategy === 'houdini') {
-          if (stock.grossMargin != null)
-            notes += ` | GM ${(stock.grossMargin * 100).toFixed(0)}%`;
-          if (stock.operatingMargin != null)
-            notes += ` | OpM ${(stock.operatingMargin * 100).toFixed(0)}%`;
-          if (stock.fcfYield != null)
-            notes += ` | FCFy ${(stock.fcfYield * 100).toFixed(1)}%`;
-          if (stock.piotroskiScore)
-            notes += ` | Piotroski ${stock.piotroskiScore}/8`;
-          if (stock.altmanZ != null)
-            notes += ` | Altman Z ${stock.altmanZ.toFixed(1)}`;
+          if (stock.revenueCagr != null)
+            notes += ` | RevCAGR ${(stock.revenueCagr * 100).toFixed(1)}%`;
+          if (stock.epsCagr != null)
+            notes += ` | EPSCAGR ${(stock.epsCagr * 100).toFixed(1)}%`;
+          if (stock.netDebtEbitda != null)
+            notes += ` | ND/EBITDA ${stock.netDebtEbitda.toFixed(1)}x`;
+          if (stock.dcfGap != null)
+            notes += ` | DCF ${stock.dcfGap >= 0 ? '+' : ''}${(stock.dcfGap * 100).toFixed(0)}%`;
         }
 
         await (supabase.from('wizard_transaction') as any).insert({

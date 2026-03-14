@@ -5,11 +5,13 @@
  * Used by both /wizard/merlin and /wizard/houdini
  */
 
+import { useState } from 'react';
 import { toast } from 'sonner';
 import {
   useWizardPortfolios,
   useWizardPortfolio,
   useInitializeWizardPortfolio,
+  useResetWizardPortfolio,
 } from '@/hooks/use-wizard-portfolios';
 import { WIZARD_CONFIGS, type WizardStrategy, WIZARD_TOP_N } from '@/config/wizard-strategies';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +33,7 @@ import {
   CheckCircle2,
   ArrowLeft,
   BarChart2,
+  RotateCcw,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -46,9 +49,11 @@ interface Props {
 export default function WizardPortfolioPage({ strategy }: Props) {
   const cfg = WIZARD_CONFIGS[strategy];
   const meta = STRATEGY_META[strategy];
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const { data: portfoliosData, isLoading: listLoading } = useWizardPortfolios();
   const initializeMutation = useInitializeWizardPortfolio();
+  const resetMutation = useResetWizardPortfolio();
 
   const portfolio = (portfoliosData?.portfolios || []).find(
     (p: any) => p.strategy === strategy
@@ -63,15 +68,37 @@ export default function WizardPortfolioPage({ strategy }: Props) {
     try {
       const result = await initializeMutation.mutateAsync(strategy);
       if (result.success) {
-        toast.success(
-          `Portfolio initialized: ${result.holdingsCreated} companies bought from ${result.companiesScreened} screened`
-        );
+        if (result.holdingsCreated === 0) {
+          if (result.companiesScreened === 0) {
+            toast.error('No stock data was retrieved — Yahoo Finance may be temporarily unavailable. Please try again in a few minutes.');
+          } else if (result.houdiniFiltered === 0) {
+            toast.warning(`Screened ${result.companiesScreened} stocks — 0 passed all quality gates at current market valuations. Try again when market conditions change, or restart to retry.`);
+          } else {
+            toast.warning(`Screened ${result.companiesScreened} stocks — 0 qualified after all checks. Please restart and try again.`);
+          }
+        } else {
+          const detail = result.houdiniFiltered != null
+            ? `${result.holdingsCreated} bought · ${result.houdiniFiltered} passed quality gates · ${result.companiesScreened} screened`
+            : `${result.holdingsCreated} companies bought from ${result.companiesScreened} screened`;
+          toast.success(`Portfolio initialized: ${detail}`);
+        }
         if (result.errors?.length) {
           result.errors.forEach((e: string) => toast.warning(e));
         }
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to initialize portfolio');
+    }
+  };
+
+  const handleReset = async () => {
+    if (!portfolioId) return;
+    try {
+      await resetMutation.mutateAsync(portfolioId);
+      toast.success('Portfolio reset — you can now re-initialize it');
+      setConfirmReset(false);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to reset portfolio');
     }
   };
 
@@ -113,7 +140,14 @@ export default function WizardPortfolioPage({ strategy }: Props) {
       {!portfolio?.isInitialized ? (
         <UninitializedView cfg={cfg} meta={meta} onInitialize={handleInitialize} isPending={initializeMutation.isPending} />
       ) : (
-        <InitializedView portfolio={detailData?.portfolio} isLoading={detailLoading} />
+        <InitializedView
+          portfolio={detailData?.portfolio}
+          isLoading={detailLoading}
+          confirmReset={confirmReset}
+          setConfirmReset={setConfirmReset}
+          onReset={handleReset}
+          isResetting={resetMutation.isPending}
+        />
       )}
     </div>
   );
@@ -180,7 +214,21 @@ function UninitializedView({
 
 // ─── Initialized ──────────────────────────────────────────────────────────────
 
-function InitializedView({ portfolio, isLoading }: { portfolio: any; isLoading: boolean }) {
+function InitializedView({
+  portfolio,
+  isLoading,
+  confirmReset,
+  setConfirmReset,
+  onReset,
+  isResetting,
+}: {
+  portfolio: any;
+  isLoading: boolean;
+  confirmReset: boolean;
+  setConfirmReset: (v: boolean) => void;
+  onReset: () => void;
+  isResetting: boolean;
+}) {
   if (isLoading || !portfolio) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -197,6 +245,26 @@ function InitializedView({ portfolio, isLoading }: { portfolio: any; isLoading: 
 
   return (
     <div className="space-y-5">
+      {/* Restart */}
+      <div className="flex justify-end">
+        {confirmReset ? (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Reset all data and start fresh?</span>
+            <Button size="sm" variant="destructive" onClick={onReset} disabled={isResetting}>
+              {isResetting ? <RefreshCw className="h-3 w-3 animate-spin" /> : 'Yes, reset'}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setConfirmReset(false)} disabled={isResetting}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => setConfirmReset(true)}>
+            <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+            Restart Portfolio
+          </Button>
+        )}
+      </div>
+
       {/* Stats */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
         <StatCard
@@ -238,7 +306,7 @@ function InitializedView({ portfolio, isLoading }: { portfolio: any; isLoading: 
             <span>→</span>
             {portfolio.strategy === 'houdini' ? (
               <span>
-                <strong className="text-foreground">{holdings.length}</strong> cleared all 19 quality gates · ranked by Magic Formula
+                <strong className="text-foreground">{holdings.length}</strong> cleared all quality gates · ranked by Magic Formula
               </span>
             ) : (
               <span>Selected top <strong className="text-foreground">{holdings.length}</strong> by Magic Formula rank</span>
@@ -262,11 +330,28 @@ function InitializedView({ portfolio, isLoading }: { portfolio: any; isLoading: 
           <CardDescription>Ranked by Magic Formula score · equal-weight allocation</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {holdings.map((h: any) => (
-              <HoldingRow key={h.id} holding={h} totalValue={portfolio.totalValue} strategy={portfolio.strategy} />
-            ))}
-          </div>
+          {holdings.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground space-y-2">
+              <PieChart className="h-10 w-10 mx-auto opacity-30" />
+              <p className="font-medium">No holdings in this portfolio</p>
+              <p className="text-sm">
+                {portfolio.strategy === 'houdini'
+                  ? 'No stocks cleared all 4 quality pillars at current market valuations. This is expected in a fully-valued market — reset and retry when conditions change.'
+                  : 'Stock data could not be retrieved during screening. Reset and try again.'}
+              </p>
+              <div className="pt-2">
+                <Button size="sm" variant="outline" onClick={() => setConfirmReset(true)}>
+                  <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Reset &amp; Re-initialize
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {holdings.map((h: any) => (
+                <HoldingRow key={h.id} holding={h} totalValue={portfolio.totalValue} strategy={portfolio.strategy} />
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -3,7 +3,7 @@
  * Routes requests to appropriate provider based on market:
  * - US: Finnhub (stocks/ETFs) + CoinGecko (crypto)
  * - Europe: Yahoo Finance
- * - Colombia: Yahoo Finance
+ * - Latin America: Yahoo Finance
  */
 
 import type { AssetType, Market, MarketQuote } from '@/types';
@@ -51,7 +51,7 @@ export async function getMarketQuote(
         volume_24h: undefined,
       };
     } else {
-      // Europe or Colombia - use Yahoo Finance
+      // Europe or Latin America - use Yahoo Finance
       const quote = await yahooFinance.getQuote(symbol);
       if (!quote) return null;
 
@@ -96,7 +96,7 @@ export async function searchAssets(query: string, market: Market = 'us') {
         market: 'us' as Market,
       }));
     } else {
-      // Europe or Colombia - use Yahoo Finance with filtering
+      // Europe or Latin America - use Yahoo Finance with filtering
       const allResults = await yahooFinance.searchSymbol(query);
       const filteredResults = yahooFinance.filterByMarket(allResults, market);
 
@@ -149,7 +149,7 @@ export async function getHistoricalPrices(
         price: item.close,
       }));
     } else {
-      // For Europe/Colombia - using Yahoo Finance
+      // For Europe/Latin America - using Yahoo Finance
       const data = await yahooFinance.getHistoricalData(symbol, days);
       if (!data) return null;
 

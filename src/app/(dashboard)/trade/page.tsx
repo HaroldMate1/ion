@@ -21,7 +21,7 @@ import type { AssetType, Market } from '@/types';
 const MARKET_OPTIONS: { value: Market; label: string; flag: string }[] = [
   { value: 'us', label: 'US Market', flag: '🇺🇸' },
   { value: 'europe', label: 'Europe', flag: '🇪🇺' },
-  { value: 'colombia', label: 'Colombia', flag: '🇨🇴' },
+  { value: 'latam', label: 'Latin America', flag: '🌎' },
 ];
 
 export default function TradePage() {
@@ -242,7 +242,7 @@ function TradeForm({
             {quote.change_24h !== undefined && (
               <div
                 className={`flex items-center gap-1 ${
-                  quote.change_24h >= 0 ? 'text-green-600' : 'text-red-600'
+                  quote.change_24h >= 0 ? 'text-emerald-400' : 'text-red-400'
                 }`}
               >
                 {quote.change_24h >= 0 ? (

@@ -47,11 +47,11 @@ export function PriceChart({ symbol, assetType, currentPrice }: PriceChartProps)
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#666',
+        textColor: '#9ca3af',
       },
       grid: {
-        vertLines: { color: '#f0f0f0' },
-        horzLines: { color: '#f0f0f0' },
+        vertLines: { color: 'rgba(255, 255, 255, 0.04)' },
+        horzLines: { color: 'rgba(255, 255, 255, 0.04)' },
       },
       width: chartContainerRef.current.clientWidth,
       height: 400,
@@ -60,7 +60,7 @@ export function PriceChart({ symbol, assetType, currentPrice }: PriceChartProps)
         secondsVisible: false,
       },
       rightPriceScale: {
-        borderColor: '#e0e0e0',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
       },
       crosshair: {
         mode: 1,
@@ -69,9 +69,9 @@ export function PriceChart({ symbol, assetType, currentPrice }: PriceChartProps)
 
     // Create area series
     const series = chart.addAreaSeries({
-      lineColor: '#2563eb',
-      topColor: 'rgba(37, 99, 235, 0.4)',
-      bottomColor: 'rgba(37, 99, 235, 0.0)',
+      lineColor: '#7c5cff',
+      topColor: 'rgba(124, 92, 255, 0.3)',
+      bottomColor: 'rgba(124, 92, 255, 0.0)',
       lineWidth: 2,
     });
 
@@ -142,7 +142,7 @@ export function PriceChart({ symbol, assetType, currentPrice }: PriceChartProps)
 
       <div className="relative">
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/50 z-10">
+          <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         )}

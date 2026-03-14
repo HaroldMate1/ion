@@ -45,6 +45,27 @@ export function useWizardPortfolio(id: string | null) {
 }
 
 /**
+ * Reset (delete) a wizard portfolio so it can be re-initialized from scratch.
+ */
+export function useResetWizardPortfolio() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/wizard/portfolios/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to reset portfolio');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: wizardPortfolioKeys.all });
+    },
+  });
+}
+
+/**
  * Initialize a wizard portfolio (runs the stock screener + buys top 30)
  */
 export function useInitializeWizardPortfolio() {

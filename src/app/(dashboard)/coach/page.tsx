@@ -16,6 +16,7 @@ import {
   useRunAnalysis,
   useToggleKillSwitch,
   useAcknowledgeSignal,
+  useResetCoach,
 } from '@/hooks/use-coach';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ import {
   Play,
   Power,
   RefreshCw,
+  RotateCcw,
   CheckCircle,
   Settings,
   FileText,
@@ -36,8 +38,7 @@ import {
   ScrollText,
   DollarSign,
   Wallet,
-  FlaskConical,
-  ArrowLeft,
+
 } from 'lucide-react';
 
 export default function CoachPage() {
@@ -49,8 +50,10 @@ export default function CoachPage() {
   const runAnalysis = useRunAnalysis();
   const toggleKillSwitch = useToggleKillSwitch();
   const acknowledgeSignal = useAcknowledgeSignal();
+  const resetCoach = useResetCoach();
 
   const [isRunning, setIsRunning] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const handleRunAnalysis = async () => {
     setIsRunning(true);
@@ -86,6 +89,16 @@ export default function CoachPage() {
     }
   };
 
+  const handleResetCoach = async () => {
+    try {
+      await resetCoach.mutateAsync();
+      setConfirmReset(false);
+      toast.success('Coach portfolio reset. All trades, signals, and reports cleared.');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to reset coach portfolio');
+    }
+  };
+
   const handleToggleKillSwitch = () => {
     toggleKillSwitch.mutate(!killSwitchActive, {
       onSuccess: () => {
@@ -117,7 +130,7 @@ export default function CoachPage() {
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <Link href="/coach/settings">
             <Button variant="outline" size="sm" className="w-full text-xs">
               <Settings className="h-4 w-4 mr-1.5 shrink-0" />
@@ -140,12 +153,6 @@ export default function CoachPage() {
             <Button variant="outline" size="sm" className="w-full text-xs">
               <ScrollText className="h-4 w-4 mr-1.5 shrink-0" />
               Movements
-            </Button>
-          </Link>
-          <Link href="/coach/fine-tune">
-            <Button variant="outline" size="sm" className="w-full text-xs border-purple-500/30 hover:bg-purple-500/10 col-span-1 sm:col-span-1">
-              <FlaskConical className="h-4 w-4 mr-1.5 shrink-0 text-purple-500" />
-              <span className="text-purple-400">Fine-Tune</span>
             </Button>
           </Link>
         </div>
@@ -283,7 +290,7 @@ export default function CoachPage() {
       </div>
 
       {/* Actions */}
-      <div className="flex flex-col sm:flex-row gap-2">
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
         <Button
           onClick={handleRunAnalysis}
           disabled={isRunning || killSwitchActive}
@@ -306,28 +313,22 @@ export default function CoachPage() {
             Activate Kill Switch
           </Button>
         )}
-      </div>
-
-      {/* Fine-Tune Banner */}
-      <Link href="/coach/fine-tune">
-        <div className="flex items-center justify-between p-4 rounded-xl border-2 border-purple-500/30 bg-purple-500/5 hover:bg-purple-500/10 transition-colors cursor-pointer">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-purple-500/15">
-              <FlaskConical className="h-6 w-6 text-purple-500" />
+        <div className="sm:ml-auto">
+          {confirmReset ? (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Reset all trades, signals &amp; reports?</span>
+              <Button size="sm" variant="destructive" onClick={handleResetCoach} disabled={resetCoach.isPending}>
+                {resetCoach.isPending ? <RefreshCw className="h-3 w-3 animate-spin" /> : 'Yes, reset'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setConfirmReset(false)}>Cancel</Button>
             </div>
-            <div>
-              <p className="font-semibold text-sm">Fine-Tuned Model</p>
-              <p className="text-xs text-muted-foreground">Backtest & optimize agent weights on historical data</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 hidden sm:flex" variant="outline">
-              Experimental
-            </Badge>
-            <ArrowLeft className="h-4 w-4 text-muted-foreground rotate-180" />
-          </div>
+          ) : (
+            <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setConfirmReset(true)}>
+              <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Restart Portfolio
+            </Button>
+          )}
         </div>
-      </Link>
+      </div>
 
       {/* Current Positions (Portfolio View) */}
       <Card>

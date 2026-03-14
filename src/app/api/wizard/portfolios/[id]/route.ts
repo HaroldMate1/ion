@@ -115,3 +115,38 @@ export async function GET(
     return NextResponse.json({ error: 'Failed to fetch portfolio' }, { status: 500 });
   }
 }
+
+/**
+ * DELETE /api/wizard/portfolios/[id]
+ * Wipe all data for this portfolio so the user can re-initialize.
+ */
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await createClient();
+    const { id } = await params;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Verify ownership
+    const { data: portfolio } = await (supabase.from('wizard_portfolio') as any)
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
+    if (!portfolio) return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 });
+
+    // Delete in FK order
+    await (supabase.from('wizard_transaction') as any).delete().eq('portfolio_id', id);
+    await (supabase.from('wizard_holding') as any).delete().eq('portfolio_id', id);
+    await (supabase.from('wizard_portfolio') as any).delete().eq('id', id);
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('Wizard portfolio DELETE error:', err);
+    return NextResponse.json({ error: 'Failed to reset portfolio' }, { status: 500 });
+  }
+}

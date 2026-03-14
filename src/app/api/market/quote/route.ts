@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!['us', 'europe', 'colombia'].includes(market)) {
+    if (!['us', 'europe', 'latam'].includes(market)) {
       return NextResponse.json(
         { error: 'Invalid market' },
         { status: 400 }

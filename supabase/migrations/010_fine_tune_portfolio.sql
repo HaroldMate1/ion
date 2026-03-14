@@ -53,7 +53,13 @@ CREATE POLICY "Users manage their fine_tune_config"
 CREATE POLICY "Users manage their fine_tune_trades"
   ON fine_tune_trade FOR ALL USING (auth.uid() = user_id);
 
--- updated_at triggers (reuse existing trigger function)
+-- Ensure trigger function exists (defined in 003, included here as safeguard)
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$ LANGUAGE plpgsql;
+
+-- updated_at triggers
 CREATE TRIGGER update_fine_tune_config_updated_at
   BEFORE UPDATE ON fine_tune_config
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -41,9 +41,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="bg-white border-b">
+      <header className="bg-card/80 backdrop-blur-xl border-b border-border">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <Link href="/dashboard" className="flex items-center space-x-2">
@@ -136,7 +136,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <main className="container mx-auto px-4 py-6 pb-24 md:pb-8">{children}</main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t md:hidden z-50">
+      <nav className="fixed bottom-0 left-0 right-0 bg-card/80 backdrop-blur-xl border-t border-border md:hidden z-50">
         <div className="flex w-full">
           {[
             { href: '/dashboard', icon: LayoutDashboard, label: 'Home', active: pathname === '/dashboard' },

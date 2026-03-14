@@ -288,9 +288,13 @@ function isMarketOpen(market: Market, assetType: AssetType): boolean {
     case 'europe':
       // Major European exchanges: ~8:00 AM - 4:30 PM CET (7:00 - 15:30 UTC)
       return utcHour >= 7 && utcHour < 16;
-    case 'colombia':
-      // BVC: 9:30 AM - 4:00 PM COT (14:30 - 21:00 UTC, same as US)
-      return utcHour >= 14 && utcHour < 21;
+    case 'latam':
+      // Latin American exchanges overlap broadly:
+      // BVC (Colombia): 9:30-16:00 COT = 14:30-21:00 UTC
+      // B3 (Brazil): 10:00-17:00 BRT = 13:00-20:00 UTC
+      // BMV (Mexico): 8:30-15:00 CST = 14:30-21:00 UTC
+      // BVL (Peru/Chile): similar to US hours
+      return utcHour >= 13 && utcHour < 21;
     default:
       return true;
   }
@@ -318,7 +322,7 @@ export function parseWatchSymbol(
     const market = parts[2].toLowerCase() as Market;
 
     if (!['stock', 'etf', 'crypto'].includes(assetType)) return null;
-    if (!['us', 'europe', 'colombia'].includes(market)) return null;
+    if (!['us', 'europe', 'latam'].includes(market)) return null;
 
     return {
       symbol: parts[0].toUpperCase(),

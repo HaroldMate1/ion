@@ -87,6 +87,28 @@ export async function GET() {
   }
 }
 
+/**
+ * DELETE /api/coach/config
+ * Reset the coach portfolio: wipe all trades, signals, and reports.
+ * The config (settings/watchlist) is preserved.
+ */
+export async function DELETE() {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    await (supabase.from('coach_paper_trade') as any).delete().eq('user_id', user.id);
+    await (supabase.from('coach_signal') as any).delete().eq('user_id', user.id);
+    await (supabase.from('coach_daily_report') as any).delete().eq('user_id', user.id);
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('Coach config DELETE error:', err);
+    return NextResponse.json({ error: 'Failed to reset coach portfolio' }, { status: 500 });
+  }
+}
+
 export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient();

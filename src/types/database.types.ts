@@ -18,7 +18,7 @@ export type Json =
 
 export type AssetType = 'stock' | 'crypto' | 'etf';
 export type TransactionType = 'buy' | 'sell';
-export type Market = 'us' | 'europe' | 'colombia';
+export type Market = 'us' | 'europe' | 'latam';
 
 export interface Database {
   public: {

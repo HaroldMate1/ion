@@ -45,6 +45,26 @@ export async function GET() {
   }
 }
 
+/**
+ * DELETE /api/fine-tune/config
+ * Reset the fine-tune portfolio: wipe all trades and the config record.
+ */
+export async function DELETE() {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    await (supabase.from('fine_tune_trade') as any).delete().eq('user_id', user.id);
+    await (supabase.from('fine_tune_config') as any).delete().eq('user_id', user.id);
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('Fine-tune config DELETE error:', err);
+    return NextResponse.json({ error: 'Failed to reset fine-tune portfolio' }, { status: 500 });
+  }
+}
+
 export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient();

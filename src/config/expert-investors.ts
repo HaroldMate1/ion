@@ -14,7 +14,9 @@ export type InvestorSlug =
   | 'hempton'
   | 'asness'
   | 'burry'
-  | 'pabrai';
+  | 'pabrai'
+  | 'pelosi'
+  | 'wood';
 
 export type AssetCategory = 'stock' | 'etf' | 'crypto' | 'bond' | 'reit' | 'commodity';
 
@@ -305,6 +307,64 @@ const pabrai: ExpertInvestor = {
 };
 
 /**
+ * Nancy Pelosi - Congressional Disclosure
+ * Based on latest periodic transaction reports (2025-2026)
+ * Known for large call-option positions in tech/AI stocks
+ */
+const pelosi: ExpertInvestor = {
+  slug: 'pelosi',
+  displayName: 'Pelosi',
+  fullName: 'Nancy Pelosi',
+  title: 'U.S. Representative, Former Speaker of the House',
+  description: 'Highly publicized congressional trader with outsized returns. Heavy concentration in AI/semiconductor stocks via call options. Portfolio has outperformed the S&P 500 significantly.',
+  strategy: 'Tech/AI Growth - Congressional Disclosure',
+  dataSource: 'Congressional Financial Disclosures 2025',
+  lastUpdated: '2025-12-30',
+  holdings: [
+    { symbol: 'NVDA', name: 'NVIDIA Corp', category: 'stock', allocationPct: 22.0, market: 'us' },
+    { symbol: 'AVGO', name: 'Broadcom Inc', category: 'stock', allocationPct: 15.0, market: 'us' },
+    { symbol: 'GOOGL', name: 'Alphabet Inc.', category: 'stock', allocationPct: 15.0, market: 'us' },
+    { symbol: 'AMZN', name: 'Amazon.com Inc', category: 'stock', allocationPct: 9.0, market: 'us' },
+    { symbol: 'AAPL', name: 'Apple Inc', category: 'stock', allocationPct: 8.0, market: 'us' },
+    { symbol: 'AB', name: 'AllianceBernstein Holding', category: 'stock', allocationPct: 6.0, market: 'us' },
+    { symbol: 'TEM', name: 'Tempus AI Inc', category: 'stock', allocationPct: 5.0, market: 'us' },
+    { symbol: 'MSFT', name: 'Microsoft Corp', category: 'stock', allocationPct: 5.0, market: 'us' },
+    { symbol: 'CRM', name: 'Salesforce Inc', category: 'stock', allocationPct: 3.0, market: 'us' },
+    { symbol: 'PANW', name: 'Palo Alto Networks', category: 'stock', allocationPct: 2.0, market: 'us' },
+    // Remaining ~10% in smaller positions and cash
+  ],
+};
+
+/**
+ * Cathie Wood - ARK Invest
+ * Based on ARK Innovation ETF (ARKK) holdings Q4 2025
+ * Focus on disruptive innovation across AI, fintech, genomics
+ */
+const wood: ExpertInvestor = {
+  slug: 'wood',
+  displayName: 'Wood',
+  fullName: 'Cathie Wood',
+  title: 'Founder & CEO, ARK Invest',
+  description: 'Disruptive innovation investor focusing on AI, genomics, fintech, autonomous vehicles, and next-gen internet. High-conviction concentrated bets on transformative technologies.',
+  strategy: 'Disruptive Innovation - High Conviction Growth',
+  dataSource: 'ARK Innovation ETF (ARKK) Q4 2025',
+  lastUpdated: '2025-12-31',
+  holdings: [
+    { symbol: 'TSLA', name: 'Tesla Inc', category: 'stock', allocationPct: 11.6, market: 'us' },
+    { symbol: 'ROKU', name: 'Roku Inc', category: 'stock', allocationPct: 5.8, market: 'us' },
+    { symbol: 'CRSP', name: 'CRISPR Therapeutics AG', category: 'stock', allocationPct: 5.4, market: 'us' },
+    { symbol: 'SHOP', name: 'Shopify Inc', category: 'stock', allocationPct: 5.2, market: 'us' },
+    { symbol: 'COIN', name: 'Coinbase Global Inc', category: 'stock', allocationPct: 5.1, market: 'us' },
+    { symbol: 'HOOD', name: 'Robinhood Markets Inc', category: 'stock', allocationPct: 4.4, market: 'us' },
+    { symbol: 'TEM', name: 'Tempus AI Inc', category: 'stock', allocationPct: 4.3, market: 'us' },
+    { symbol: 'PLTR', name: 'Palantir Technologies', category: 'stock', allocationPct: 3.8, market: 'us' },
+    { symbol: 'AMD', name: 'Advanced Micro Devices', category: 'stock', allocationPct: 3.5, market: 'us' },
+    { symbol: 'RBLX', name: 'Roblox Corp', category: 'stock', allocationPct: 3.5, market: 'us' },
+    // Remaining ~47% spread across 30+ other positions
+  ],
+};
+
+/**
  * All expert investors indexed by slug
  */
 export const EXPERT_INVESTORS: Record<InvestorSlug, ExpertInvestor> = {
@@ -318,6 +378,8 @@ export const EXPERT_INVESTORS: Record<InvestorSlug, ExpertInvestor> = {
   asness,
   burry,
   pabrai,
+  pelosi,
+  wood,
 };
 
 /**
@@ -334,6 +396,8 @@ export const INVESTOR_SLUGS: InvestorSlug[] = [
   'asness',
   'burry',
   'pabrai',
+  'pelosi',
+  'wood',
 ];
 
 /**

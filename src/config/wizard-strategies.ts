@@ -28,7 +28,7 @@ export const WIZARD_CONFIGS: Record<WizardStrategy, WizardStrategyConfig> = {
     description:
       "Applies Joel Greenblatt's Magic Formula: rank companies by Earnings Yield (1/P·E) and Return on Capital (ROE), combine ranks, and invest equally in the top 30.",
     methodology:
-      'Ranks a universe of ~120 large-cap US stocks by two metrics: (1) Earnings Yield = 1 / trailing P/E — favours cheap companies; (2) Return on Equity — favours efficient companies. The combined rank score picks the 30 best across both dimensions.',
+      'Ranks a universe of ~150 large-cap global stocks by two metrics: (1) Earnings Yield = 1 / trailing P/E — favours cheap companies; (2) Return on Equity — favours efficient companies. The combined rank score picks the 30 best across both dimensions. Note: this is an approximation of Greenblatt\'s exact formula, optimised for data reliability.',
     filters: [
       'Positive trailing P/E ratio',
       'Positive Return on Equity (ROE)',
@@ -39,50 +39,83 @@ export const WIZARD_CONFIGS: Record<WizardStrategy, WizardStrategyConfig> = {
     strategy: 'houdini',
     displayName: 'Houdini',
     icon: 'houdini',
-    title: 'Houdini — Elite Magic Formula',
+    title: 'Houdini — Quality Magic Formula',
     description:
-      'Magic Formula applied only to companies that pass an institutional-grade quality gate: elite profitability, fortress balance sheet, multi-year consistency, sensible valuation, high Piotroski & Altman scores, and price confirmation above the 200-day MA.',
+      'Magic Formula applied only to companies that pass a quality gate: strong return on equity, healthy operating margins, reasonable valuation, and a clean balance sheet. Screens a global universe of ~150 large-caps.',
     methodology:
-      'Before ranking by Earnings Yield + ROE, Houdini runs 19 binary checks across five pillars: (1) Profitability — ROE ≥ 20%, operating margin ≥ 20%, gross margin ≥ 50%, FCF margin ≥ 15%; (2) Debt — Net Debt/EBITDA < 1×, interest coverage ≥ 15×; (3) Consistency — revenue CAGR ≥ 10%, EPS positive every year, FCF positive every year, ≤ 1 revenue decline year; (4) Valuation — PEG ≤ 1.5, EV/EBIT < 18×, FCF yield ≥ 3%, DCF gap ≥ −20%; (5) Quality — Piotroski ≥ 7, Altman Z ≥ 3, institutional ownership ≥ 30%, price above 200-day MA. Only stocks clearing every hurdle proceed to Magic Formula ranking; the portfolio holds all qualifiers (often < 30), each equally weighted.',
+      'Before ranking by Earnings Yield (1/P·E) + Return on Equity, Houdini applies four quality filters using real-time data: (1) ROE ≥ 15% — only profitable, efficient businesses; (2) Operating margin ≥ 10% — sustainable core economics; (3) P/E ≤ 40 — excludes speculative valuations; (4) Net Debt/EBITDA < 3× — avoids overleveraged companies. Stocks clearing all four gates are ranked by Magic Formula score; the top 30 are equally weighted. Note: approximation of Greenblatt\'s exact formula, optimised for data reliability.',
     filters: [
-      'ROE ≥ 20% · Operating margin ≥ 20% · Gross margin ≥ 50% · FCF margin ≥ 15%',
-      'Net Debt/EBITDA < 1× · Interest coverage ≥ 15×',
-      'Revenue CAGR ≥ 10% · EPS positive every year · FCF positive every year · ≤ 1 revenue-decline year',
-      'PEG ≤ 1.5 · EV/EBIT < 18× · FCF yield ≥ 3% · DCF within 20% of fair value',
-      'Piotroski F-Score ≥ 7 · Altman Z ≥ 3.0 · Institutional ownership ≥ 30% · Price above 200-day MA',
+      'Return on Equity (ROE) ≥ 15%',
+      'Operating margin ≥ 10%',
+      'Trailing P/E ≤ 40',
+      'Net Debt / EBITDA < 3×',
     ],
   },
 };
 
 /**
- * Stock universe screened by the wizard strategies (~120 large-cap US stocks)
+ * Stock universe screened by the wizard strategies (~150 large-cap global stocks)
  */
 export const WIZARD_STOCK_UNIVERSE = [
-  // Technology
+  // ── US Technology ──────────────────────────────────────────────────────────
   'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AVGO', 'ORCL', 'ADBE',
   'AMD', 'QCOM', 'INTU', 'TXN', 'AMAT', 'MU', 'NOW', 'SNPS',
   'CDNS', 'ADI', 'WDAY', 'CRM', 'PANW', 'UBER', 'ABNB', 'NET', 'ZS',
-  // Consumer Discretionary
+  // ── US Consumer Discretionary ──────────────────────────────────────────────
   'AMZN', 'TSLA', 'HD', 'MCD', 'COST', 'WMT', 'NKE',
   'SBUX', 'TJX', 'LOW', 'BKNG', 'MAR', 'CMG', 'LULU', 'RCL',
-  // Healthcare
+  // ── US Healthcare ──────────────────────────────────────────────────────────
   'JNJ', 'UNH', 'LLY', 'ABBV', 'MRK', 'TMO', 'ABT', 'AMGN',
   'BMY', 'GILD', 'ISRG', 'SYK', 'VRTX', 'REGN', 'ELV', 'HCA', 'CI',
-  // Financials
+  // ── US Financials ──────────────────────────────────────────────────────────
   'JPM', 'V', 'MA', 'BAC', 'WFC', 'GS', 'MS', 'BLK',
   'AXP', 'SCHW', 'SPGI', 'MCO', 'CME', 'ICE', 'PGR', 'CB',
-  // Consumer Staples
+  // ── US Consumer Staples ────────────────────────────────────────────────────
   'PG', 'KO', 'PEP', 'PM', 'MO', 'MDLZ', 'CL', 'KMB',
-  // Energy
+  // ── US Energy ──────────────────────────────────────────────────────────────
   'XOM', 'CVX', 'COP', 'EOG', 'SLB', 'MPC', 'VLO', 'OXY', 'PSX',
-  // Industrials
+  // ── US Industrials ─────────────────────────────────────────────────────────
   'HON', 'RTX', 'CAT', 'DE', 'LMT', 'GE', 'UPS', 'ETN', 'PH', 'NOC', 'GD', 'FDX',
-  // Communication Services
+  // ── US Communication / Media ───────────────────────────────────────────────
   'NFLX', 'DIS', 'T', 'VZ', 'TMUS', 'CHTR',
-  // Materials
+  // ── US Materials ───────────────────────────────────────────────────────────
   'LIN', 'APD', 'SHW', 'ECL', 'FCX', 'NEM',
-  // Utilities
-  'NEE', 'SO', 'DUK',
-  // Real Estate
-  'AMT', 'PLD', 'EQIX',
+  // ── US Utilities & Real Estate ─────────────────────────────────────────────
+  'NEE', 'SO', 'DUK', 'AMT', 'PLD', 'EQIX',
+
+  // ── International — Europe (US-listed ADRs) ────────────────────────────────
+  'ASML',  // ASML (Netherlands — Semiconductors)
+  'SAP',   // SAP (Germany — Enterprise Software)
+  'NVO',   // Novo Nordisk (Denmark — Pharma)
+  'AZN',   // AstraZeneca (UK — Pharma)
+  'NVS',   // Novartis (Switzerland — Pharma)
+  'GSK',   // GSK (UK — Pharma)
+  'SNY',   // Sanofi (France — Pharma)
+  'RACE',  // Ferrari (Italy — Luxury Autos)
+  'STLA',  // Stellantis (Netherlands — Autos)
+  'UL',    // Unilever (UK — Consumer Staples)
+  'DEO',   // Diageo (UK — Beverages)
+  'BP',    // BP (UK — Energy)
+  'SHEL',  // Shell (UK — Energy)
+  'TTE',   // TotalEnergies (France — Energy)
+  'EQNR',  // Equinor (Norway — Energy)
+  'RIO',   // Rio Tinto (UK/Australia — Mining)
+  'BHP',   // BHP Group (Australia — Mining)
+  'ARGX',  // argenx (Netherlands — Biotech)
+
+  // ── International — Asia-Pacific (US-listed ADRs) ──────────────────────────
+  'TSM',   // TSMC (Taiwan — Semiconductors)
+  'SONY',  // Sony (Japan — Electronics/Entertainment)
+  'TM',    // Toyota Motor (Japan — Autos)
+  'HMC',   // Honda Motor (Japan — Autos)
+  'INFY',  // Infosys (India — IT Services)
+  'HDB',   // HDFC Bank (India — Financials)
+  'SE',    // Sea Limited (Singapore — Tech/E-commerce)
+
+  // ── International — Americas (US-listed ADRs) ──────────────────────────────
+  'SHOP',  // Shopify (Canada — E-commerce)
+  'RY',    // Royal Bank of Canada (Canada — Financials)
+  'TD',    // TD Bank (Canada — Financials)
+  'MELI',  // MercadoLibre (Argentina — E-commerce)
+  'NU',    // Nu Holdings (Brazil — Fintech)
 ];

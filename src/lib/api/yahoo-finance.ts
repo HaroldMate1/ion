@@ -1,6 +1,6 @@
 /**
  * Yahoo Finance API Client
- * For European and Colombian market data
+ * For European and Latin American market data
  * Uses yahoo-finance2 package for reliable server-side requests
  */
 
@@ -30,7 +30,8 @@ export interface YahooSearchResult {
  * Get real-time quote for a symbol
  * Supports international symbols like:
  * - Europe: SAP.DE (Germany), ASML.AS (Netherlands), MC.PA (France)
- * - Colombia: ECOPETROL.CL, PFBCOLOM.CL, GRUPOSUR.CL
+ * - Latin America: ECOPETROL.CL (Colombia), PETR4.SA (Brazil), AMXL.MX (Mexico),
+ *   GGAL.BA (Argentina), FALABELLA.SN (Chile), BVN (Peru via US ADR)
  */
 export async function getQuote(symbol: string): Promise<YahooQuote | null> {
   try {
@@ -117,13 +118,15 @@ export async function getHistoricalData(symbol: string, days: number = 30) {
 /**
  * Filter search results by market region
  */
-export function filterByMarket(results: YahooSearchResult[], market: 'europe' | 'colombia'): YahooSearchResult[] {
+export function filterByMarket(results: YahooSearchResult[], market: 'europe' | 'latam'): YahooSearchResult[] {
   const europeExchanges = ['FRA', 'GER', 'PAR', 'AMS', 'LSE', 'MIL', 'MAD', 'STO', 'HEL', 'BRU', 'VIE', 'SWX'];
-  const colombiaExchanges = ['BVC', 'BOG'];
+  // Latin America: Colombia (BVC), Brazil (B3/SAO), Mexico (BMV/MEX), Argentina (BCBA/BUE), Chile (BCS/SGO), Peru (BVL/LIM)
+  const latamExchanges = ['BVC', 'BOG', 'SAO', 'BSP', 'MEX', 'BMV', 'BUE', 'BCBA', 'SGO', 'BCS', 'LIM', 'BVL'];
 
   // Symbol suffixes for regions
   const europeSuffixes = ['.DE', '.PA', '.AS', '.L', '.MI', '.MC', '.ST', '.HE', '.BR', '.VI', '.SW', '.F'];
-  const colombiaSuffixes = ['.CL', '.BVC'];
+  // Latin America suffixes: .CL (Colombia), .SA (Brazil), .MX (Mexico), .BA (Argentina), .SN (Chile)
+  const latamSuffixes = ['.CL', '.BVC', '.SA', '.MX', '.BA', '.SN'];
 
   return results.filter((result) => {
     const symbol = result.symbol.toUpperCase();
@@ -132,10 +135,11 @@ export function filterByMarket(results: YahooSearchResult[], market: 'europe' | 
     if (market === 'europe') {
       return europeExchanges.some((ex) => exchange.includes(ex)) ||
              europeSuffixes.some((suffix) => symbol.endsWith(suffix));
-    } else if (market === 'colombia') {
-      return colombiaExchanges.some((ex) => exchange.includes(ex)) ||
-             colombiaSuffixes.some((suffix) => symbol.endsWith(suffix));
+    } else if (market === 'latam') {
+      return latamExchanges.some((ex) => exchange.includes(ex)) ||
+             latamSuffixes.some((suffix) => symbol.endsWith(suffix));
     }
     return false;
   });
 }
+
