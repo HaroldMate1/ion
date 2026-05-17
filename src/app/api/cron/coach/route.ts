@@ -17,6 +17,7 @@ import {
   autoCloseTradesForUser,
   generateDailyReportForUser,
   runFineTuneForUser,
+  runPrometheusForUser,
   transformConfigRow,
 } from '@/lib/coach/autonomousRunner';
 import { fetchARKActivity } from '@/lib/expert-tracking/ark-fetcher';
@@ -107,6 +108,15 @@ export async function GET(request: NextRequest) {
           fineTuneResult = { error: String(ftErr) };
         }
 
+        // Step 5: Run Prometheus portfolio (regulatory signals) — non-blocking per user
+        let prometheusResult: any = { skipped: true, reason: 'not attempted' };
+        try {
+          prometheusResult = await runPrometheusForUser(supabase, userId);
+        } catch (pmErr) {
+          console.error(`[Prometheus] Error for user ${userId}:`, pmErr);
+          prometheusResult = { error: String(pmErr) };
+        }
+
         results.push({
           userId,
           analysis: analysisResult,
@@ -119,7 +129,8 @@ export async function GET(request: NextRequest) {
           `${analysisResult.skipped ? 'skipped' : `${analysisResult.signalsGenerated || 0} signals, ${analysisResult.autoExecutedTrades?.length || 0} trades`}, ` +
           `${autoCloseResult.closed} trades closed, ` +
           `report: ${reportResult.skipped ? 'skipped' : 'generated'}, ` +
-          `fine-tune: ${fineTuneResult.skipped ? 'skipped' : `${fineTuneResult.tradesExecuted || 0} trades`}`
+          `fine-tune: ${fineTuneResult.skipped ? 'skipped' : `${fineTuneResult.tradesExecuted || 0} trades`}, ` +
+          `prometheus: ${prometheusResult.skipped ? 'skipped' : `${prometheusResult.tradesExecuted || 0} trades`}`
         );
       } catch (userError) {
         console.error(`Error processing user ${userId}:`, userError);

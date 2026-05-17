@@ -11,10 +11,20 @@ import { useQuery } from '@tanstack/react-query';
 import {
   FlaskConical, TrendingUp, TrendingDown, Clock, AlertTriangle,
   CheckCircle2, XCircle, ArrowLeft, BarChart3, Zap, Info, ExternalLink,
-  ChevronDown, ChevronUp, Filter,
+  ChevronDown, ChevronUp, Filter, Power, PowerOff, Wallet, Activity,
+  RefreshCw, Trash2,
 } from 'lucide-react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import type { RegulatoryDecision, InvestmentSignal, DecisionStatus } from '@/types/pharma.types';
+import {
+  usePrometheusBalance,
+  usePrometheusTrades,
+  usePrometheusConfig,
+  useUpdatePrometheusConfig,
+  useResetPrometheusPortfolio,
+  type PrometheusTrade,
+} from '@/hooks/use-prometheus-portfolio';
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
 
@@ -391,6 +401,278 @@ const STATUS_OPTIONS = [
   { value: 'decided', label: 'Decided' },
 ];
 
+// ── Portfolio helpers ─────────────────────────────────────────────────────────
+
+function fmt(n: number) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtPct(n: number) {
+  return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+}
+function pnlColor(n: number) {
+  return n > 0 ? 'text-emerald-400' : n < 0 ? 'text-rose-400' : 'text-muted-foreground';
+}
+
+// ── Portfolio Panel ───────────────────────────────────────────────────────────
+
+function PrometheusPortfolio() {
+  const [tab, setTab] = useState<'open' | 'closed'>('open');
+  const [resetConfirm, setResetConfirm] = useState(false);
+
+  const { data: balData, isLoading: balLoading } = usePrometheusBalance();
+  const { data: cfgData }                         = usePrometheusConfig();
+  const { data: tradesData }                      = usePrometheusTrades();
+  const updateConfig                              = useUpdatePrometheusConfig();
+  const resetPortfolio                            = useResetPrometheusPortfolio();
+
+  const config   = cfgData?.config;
+  const isActive = config?.is_active    ?? false;
+  const killed   = config?.kill_switch  ?? false;
+  const bal      = balData;
+
+  const allTrades   = tradesData?.trades || [];
+  const openTrades  = allTrades.filter(t => t.status === 'open');
+  const closedTrades = allTrades.filter(t => t.status !== 'open');
+  const shownTrades  = tab === 'open' ? openTrades : closedTrades;
+
+  const winRate = closedTrades.length === 0 ? 0 :
+    (closedTrades.filter(t => (t.pnl_usd ?? 0) > 0).length / closedTrades.length) * 100;
+  const realizedPnL = closedTrades.reduce((s, t) => s + (t.pnl_usd ?? 0), 0);
+
+  async function toggleActive() {
+    try {
+      await updateConfig.mutateAsync({ is_active: !isActive });
+      toast.success(isActive ? 'Prometheus paused' : 'Prometheus activated — trading on next cron cycle');
+    } catch { toast.error('Failed to update config'); }
+  }
+
+  async function toggleKillSwitch() {
+    try {
+      await updateConfig.mutateAsync({ kill_switch: !killed });
+      toast.success(killed ? 'Kill switch deactivated' : 'Kill switch activated');
+    } catch { toast.error('Failed to update'); }
+  }
+
+  async function handleReset() {
+    try {
+      await resetPortfolio.mutateAsync();
+      setResetConfirm(false);
+      toast.success('Portfolio reset to $100,000');
+    } catch { toast.error('Reset failed'); }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Wallet className="h-4 w-4 text-rose-400" />
+          <h2 className="text-base font-bold text-foreground">Prometheus Portfolio</h2>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/25 font-medium">
+            $100k Paper
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Kill switch */}
+          {isActive && (
+            <button
+              onClick={toggleKillSwitch}
+              className={`text-xs px-2.5 py-1 rounded-lg font-medium flex items-center gap-1.5 transition-all ${
+                killed
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30'
+                  : 'bg-white/5 text-muted-foreground hover:bg-white/10 border border-white/10'
+              }`}
+            >
+              {killed ? <PowerOff className="h-3 w-3" /> : <Power className="h-3 w-3" />}
+              {killed ? 'Paused' : 'Pause'}
+            </button>
+          )}
+          {/* Activate/Deactivate */}
+          <button
+            onClick={toggleActive}
+            disabled={updateConfig.isPending}
+            className={`text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
+              isActive
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500/30'
+                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30'
+            }`}
+          >
+            {isActive ? <PowerOff className="h-3 w-3" /> : <Power className="h-3 w-3" />}
+            {isActive ? 'Deactivate' : 'Activate'}
+          </button>
+        </div>
+      </div>
+
+      {/* Kill switch alert */}
+      {killed && isActive && (
+        <div className="rounded-xl bg-amber-500/10 border border-amber-500/25 px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm text-amber-300">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Kill switch active — no new trades until deactivated
+          </div>
+          <button onClick={toggleKillSwitch} className="text-xs text-amber-300 underline">Deactivate</button>
+        </div>
+      )}
+
+      {/* Status banner when inactive */}
+      {!isActive && (
+        <div className="rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-muted-foreground text-center">
+          Activate Prometheus to start autonomous trading on{' '}
+          <span className="text-rose-300 font-medium">strong_buy</span> and{' '}
+          <span className="text-rose-300 font-medium">strong_sell</span> regulatory signals.
+          Trades execute automatically on each cron cycle.
+        </div>
+      )}
+
+      {/* Stats grid */}
+      {bal && !balLoading && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: 'Portfolio Value', value: `$${fmt(bal.totalValue)}`,  color: pnlColor(bal.totalValue - bal.initialBalance) },
+            { label: 'Total Return',   value: fmtPct(bal.totalReturnPct), color: pnlColor(bal.totalReturnPct) },
+            { label: 'Available Cash', value: `$${fmt(bal.availableCash)}`, color: 'text-foreground' },
+            { label: 'Open Positions', value: String(bal.openPositions),   color: 'text-violet-400' },
+          ].map(s => (
+            <div key={s.label} className="glass-card rounded-xl p-3 border border-white/8">
+              <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Secondary stats */}
+      {closedTrades.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: 'Realized P&L',  value: `${realizedPnL >= 0 ? '+' : ''}$${fmt(realizedPnL)}`, color: pnlColor(realizedPnL) },
+            { label: 'Today\'s P&L',  value: `${(bal?.todayPnL ?? 0) >= 0 ? '+' : ''}$${fmt(bal?.todayPnL ?? 0)}`, color: pnlColor(bal?.todayPnL ?? 0) },
+            { label: 'Win Rate',      value: `${winRate.toFixed(0)}%`,  color: winRate >= 50 ? 'text-emerald-400' : 'text-rose-400' },
+          ].map(s => (
+            <div key={s.label} className="glass-card rounded-xl p-3 border border-white/8">
+              <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Trades table */}
+      <div className="glass-card rounded-xl border border-white/8 overflow-hidden">
+        {/* Tabs */}
+        <div className="flex border-b border-white/8">
+          {(['open', 'closed'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`flex-1 text-xs font-medium py-2.5 capitalize transition-colors ${
+                tab === t
+                  ? 'text-foreground border-b-2 border-rose-400'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t === 'open' ? `Open (${openTrades.length})` : `Closed (${closedTrades.length})`}
+            </button>
+          ))}
+        </div>
+
+        {/* Rows */}
+        {shownTrades.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            {tab === 'open'
+              ? 'No open positions. Prometheus will trade on the next cron cycle.'
+              : 'No closed trades yet.'}
+          </div>
+        ) : (
+          <div className="divide-y divide-white/6">
+            {shownTrades.map(t => <TradeRow key={t.id} trade={t} />)}
+          </div>
+        )}
+      </div>
+
+      {/* Danger zone */}
+      <div className="flex justify-end">
+        {!resetConfirm ? (
+          <button
+            onClick={() => setResetConfirm(true)}
+            className="text-xs text-muted-foreground/60 hover:text-rose-400 transition-colors flex items-center gap-1"
+          >
+            <Trash2 className="h-3 w-3" /> Reset portfolio
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-rose-400">Reset to $100k?</span>
+            <button onClick={handleReset} className="text-xs px-2.5 py-1 bg-rose-500/20 text-rose-300 rounded-lg border border-rose-500/30">
+              Confirm
+            </button>
+            <button onClick={() => setResetConfirm(false)} className="text-xs text-muted-foreground hover:text-foreground">
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Trade Row ─────────────────────────────────────────────────────────────────
+
+function TradeRow({ trade }: { trade: PrometheusTrade }) {
+  const isOpen = trade.status === 'open';
+  const pnl    = trade.pnl_usd ?? 0;
+  const pnlPct = trade.pnl_pct ?? 0;
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 hover:bg-white/3 transition-colors">
+      {/* Side badge */}
+      <span className={`text-xs font-bold px-2 py-0.5 rounded shrink-0 ${
+        trade.side === 'BUY'
+          ? 'bg-emerald-500/20 text-emerald-300'
+          : 'bg-rose-500/20 text-rose-300'
+      }`}>
+        {trade.side}
+      </span>
+
+      {/* Symbol + drug */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-semibold text-foreground">{trade.symbol}</span>
+          {trade.drug_name && (
+            <span className="text-xs text-muted-foreground truncate">{trade.drug_name}</span>
+          )}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {Number(trade.quantity).toFixed(2)} sh @ ${Number(trade.entry_price).toFixed(2)}
+        </div>
+      </div>
+
+      {/* Status / P&L */}
+      <div className="text-right shrink-0">
+        {isOpen ? (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/20">
+            Open
+          </span>
+        ) : (
+          <>
+            <div className={`text-sm font-bold ${pnlColor(pnl)}`}>
+              {pnl >= 0 ? '+' : ''}${fmt(pnl)}
+            </div>
+            <div className={`text-xs ${pnlColor(pnlPct)}`}>{fmtPct(pnlPct)}</div>
+          </>
+        )}
+      </div>
+
+      {/* Size */}
+      <div className="text-right shrink-0 hidden md:block">
+        <div className="text-xs text-muted-foreground">${fmt(Number(trade.size_usd))}</div>
+        <div className="text-xs text-muted-foreground/60">
+          {trade.status === 'stopped' ? 'SL' : trade.status === 'tp_hit' ? 'TP' : ''}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PharmaIntelPage() {
@@ -597,6 +879,11 @@ export default function PharmaIntelPage() {
           )}
         </>
       )}
+
+      {/* ── Prometheus Portfolio ─────────────────────────────────────── */}
+      <div className="border-t border-white/8 pt-8">
+        <PrometheusPortfolio />
+      </div>
 
       {/* ── Disclaimer ──────────────────────────────────────────────── */}
       <div className="text-xs text-muted-foreground/60 border-t border-white/6 pt-4 leading-relaxed">

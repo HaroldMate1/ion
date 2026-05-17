@@ -1017,3 +1017,166 @@ export async function generateFineTuneReportForUser(supabase: any, userId: strin
 
   return { skipped: false, summary: summary.substring(0, 200) + '...' };
 }
+
+// ── Prometheus Autonomous Portfolio ───────────────────────────────────────────
+// $100k paper portfolio driven by FDA/EMA regulatory signals.
+// Executes on strong_buy / strong_sell only. Closes at SL or TP.
+
+import { PHARMA_PIPELINE } from '@/config/pharma-pipeline';
+
+const PROMETHEUS_INITIAL_BALANCE = 100_000;
+// Max 10% of portfolio per regulatory trade (higher conviction, more concentrated)
+const PROMETHEUS_POSITION_SIZE_PCT = 0.10;
+// Stop loss: -12% (regulatory plays are volatile; give room for noise)
+const PROMETHEUS_STOP_LOSS_PCT = 0.12;
+// Take profit: +30% (captures approval pop or pre-decision run-up)
+const PROMETHEUS_TAKE_PROFIT_PCT = 0.30;
+
+/**
+ * Run Prometheus portfolio for a user: auto-close SL/TP, scan regulatory signals, auto-trade.
+ * Called by the cron job alongside Coach and Fine-Tune processing.
+ */
+export async function runPrometheusForUser(supabase: any, userId: string) {
+  // ── Load config ─────────────────────────────────────────────────────────────
+  const { data: configRow } = await (supabase.from('prometheus_config') as any)
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (!configRow || !configRow.is_active) {
+    return { skipped: true, reason: 'Prometheus not active' };
+  }
+  if (configRow.kill_switch) {
+    return { skipped: true, reason: 'Kill switch active' };
+  }
+
+  // ── 1. Auto-close open positions at SL / TP ────────────────────────────────
+  const { data: openTrades } = await (supabase.from('prometheus_trade') as any)
+    .select('*')
+    .eq('user_id', userId)
+    .eq('status', 'open');
+
+  let tradesClosed = 0;
+  for (const trade of openTrades || []) {
+    try {
+      const quote = await getMarketQuote(trade.symbol, 'stock', 'us');
+      if (!quote) continue;
+
+      const price  = quote.price;
+      const entry  = Number(trade.entry_price);
+      const sl     = trade.stop_loss  ? Number(trade.stop_loss)  : null;
+      const tp     = trade.take_profit ? Number(trade.take_profit) : null;
+      const side   = trade.side as 'BUY' | 'SELL';
+
+      let newStatus: string | null = null;
+
+      if (sl && checkStopLoss(entry, price, sl, side)) {
+        newStatus = 'stopped';
+      } else if (tp) {
+        const tpHit = side === 'BUY' ? price >= tp : price <= tp;
+        if (tpHit) newStatus = 'tp_hit';
+      }
+
+      if (newStatus) {
+        const { pnl, pnlPercent } = calculatePnL(entry, price, Number(trade.quantity), side);
+        await (supabase.from('prometheus_trade') as any)
+          .update({
+            status:     newStatus,
+            closed_at:  new Date().toISOString(),
+            exit_price: price,
+            pnl_usd:    pnl,
+            pnl_pct:    pnlPercent,
+          })
+          .eq('id', trade.id);
+        tradesClosed++;
+      }
+    } catch { /* skip */ }
+  }
+
+  // ── 2. Recalculate portfolio state ──────────────────────────────────────────
+  const { data: allTrades } = await (supabase.from('prometheus_trade') as any)
+    .select('size_usd, pnl_usd, status, symbol')
+    .eq('user_id', userId);
+
+  const stillOpen     = (allTrades || []).filter((t: any) => t.status === 'open');
+  const closedTrades  = (allTrades || []).filter((t: any) => t.status !== 'open');
+  const realizedPnL   = closedTrades.reduce((s: number, t: any) => s + (Number(t.pnl_usd) || 0), 0);
+  const capitalInUse  = stillOpen.reduce((s: number, t: any) => s + Number(t.size_usd), 0);
+  const totalValue    = PROMETHEUS_INITIAL_BALANCE + realizedPnL;
+  const availableCash = Math.max(0, totalValue - capitalInUse);
+
+  // ── 3. Scan PHARMA_PIPELINE for actionable regulatory signals ──────────────
+  // Only trade strong_buy (long) and strong_sell (short via SELL position).
+  // Skip any symbol that already has an open position.
+  const openSymbols = new Set(stillOpen.map((t: any) => t.symbol));
+  const executed: { symbol: string; side: string; drug: string }[] = [];
+  let cash = availableCash;
+
+  const actionableSignals = PHARMA_PIPELINE.filter(d =>
+    d.ticker &&
+    (d.investmentSignal === 'strong_buy' || d.investmentSignal === 'strong_sell') &&
+    !openSymbols.has(d.ticker)
+  );
+
+  for (const decision of actionableSignals) {
+    if (cash < 100) break; // need at least $100 to open
+
+    const ticker = decision.ticker!;
+    try {
+      const quote = await getMarketQuote(ticker, 'stock', 'us');
+      if (!quote || !quote.price || quote.price <= 0) continue;
+
+      const price   = quote.price;
+      const side    = decision.investmentSignal === 'strong_buy' ? 'BUY' : 'SELL';
+      const sizeUsd = Math.min(cash, totalValue * PROMETHEUS_POSITION_SIZE_PCT);
+      if (sizeUsd < 50) continue;
+
+      const quantity   = sizeUsd / price;
+      const stopLoss   = side === 'BUY'
+        ? price * (1 - PROMETHEUS_STOP_LOSS_PCT)
+        : price * (1 + PROMETHEUS_STOP_LOSS_PCT);
+      const takeProfit = side === 'BUY'
+        ? price * (1 + PROMETHEUS_TAKE_PROFIT_PCT)
+        : price * (1 - PROMETHEUS_TAKE_PROFIT_PCT);
+
+      const drugLabel = decision.brandName !== 'TBD' ? decision.brandName : decision.genericName;
+      const notes = `Prometheus auto. Signal: ${decision.investmentSignal}. ${drugLabel} (${decision.regulatoryBody} ${decision.isPending ? 'pending' : decision.status}). ${decision.signalRationale.substring(0, 120)}`;
+
+      await (supabase.from('prometheus_trade') as any).insert({
+        user_id:          userId,
+        symbol:           ticker,
+        drug_name:        drugLabel,
+        signal_rationale: decision.signalRationale,
+        side,
+        entry_price:      price,
+        size_usd:         sizeUsd,
+        quantity,
+        stop_loss:        stopLoss,
+        take_profit:      takeProfit,
+        status:           'open',
+        opened_at:        new Date().toISOString(),
+        notes,
+      });
+
+      openSymbols.add(ticker);
+      executed.push({ symbol: ticker, side, drug: drugLabel });
+      cash -= sizeUsd;
+    } catch (err: any) {
+      console.error(`[Prometheus] Failed to open trade for ${ticker}:`, err.message);
+    }
+  }
+
+  console.log(
+    `[Prometheus] user ${userId}: ${tradesClosed} closed, ${executed.length} opened. ` +
+    `Portfolio: $${totalValue.toFixed(0)} | Cash: $${cash.toFixed(0)}`
+  );
+
+  return {
+    skipped:       false,
+    tradesClosed,
+    tradesExecuted: executed.length,
+    executed,
+    portfolioValue: totalValue,
+    availableCash:  cash,
+  };
+}
