@@ -5,15 +5,291 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useBalance, usePortfolio, usePortfolioSummary, useResetPortfolio } from '@/hooks/use-portfolio';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { DollarSign, TrendingUp, Activity, ArrowRight, Brain, RotateCcw, RefreshCw, Sparkles } from 'lucide-react';
+import {
+  DollarSign, TrendingUp, Activity, ArrowRight, Brain, RotateCcw,
+  RefreshCw, Sparkles, Trophy, Copy, X, ChevronRight, Loader2,
+} from 'lucide-react';
 import { useCoachSummary } from '@/hooks/use-coach';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Link from 'next/link';
+
+// ── Leaderboard types ─────────────────────────────────────────────────────────
+
+interface LeaderboardEntry {
+  rank:           number;
+  id:             string;
+  name:           string;
+  category:       'ai' | 'llm' | 'quant' | 'expert' | 'benchmark';
+  categoryLabel:  string;
+  portfolioType:  string;
+  slug:           string;
+  portfolioId?:   string;
+  initialBalance: number;
+  totalValue:     number;
+  totalReturnPct: number;
+  totalReturnUsd: number;
+  openPositions:  number | null;
+  isInitialized:  boolean;
+}
+
+interface CopyPosition {
+  symbol:        string;
+  assetName:     string;
+  assetType:     string;
+  market:        string;
+  allocationPct: number;
+}
+
+// ── Leaderboard data fetchers ─────────────────────────────────────────────────
+
+async function fetchLeaderboard(): Promise<{ entries: LeaderboardEntry[] }> {
+  const res = await fetch('/api/leaderboard');
+  if (!res.ok) throw new Error('Failed to fetch leaderboard');
+  return res.json();
+}
+
+async function fetchPositions(entry: LeaderboardEntry): Promise<CopyPosition[]> {
+  const params = new URLSearchParams({
+    type: entry.portfolioType,
+    slug: entry.slug,
+    ...(entry.portfolioId ? { portfolioId: entry.portfolioId } : {}),
+  });
+  const res = await fetch(`/api/leaderboard/copy?${params}`);
+  if (!res.ok) throw new Error('Failed to fetch positions');
+  const data = await res.json();
+  return data.positions || [];
+}
+
+// ── Category config ───────────────────────────────────────────────────────────
+
+const CATEGORY_STYLE: Record<string, { bg: string; text: string; border: string }> = {
+  ai:        { bg: 'bg-violet-500/15', text: 'text-violet-300',  border: 'border-violet-500/25' },
+  llm:       { bg: 'bg-blue-500/15',   text: 'text-blue-300',    border: 'border-blue-500/25' },
+  quant:     { bg: 'bg-amber-500/15',  text: 'text-amber-300',   border: 'border-amber-500/25' },
+  expert:    { bg: 'bg-emerald-500/15',text: 'text-emerald-300', border: 'border-emerald-500/25' },
+  benchmark: { bg: 'bg-gray-500/15',   text: 'text-gray-300',    border: 'border-gray-500/25' },
+};
+
+const RANK_MEDAL: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
+
+const PORTFOLIO_HREF: Partial<Record<string, string>> = {
+  coach:      '/coach',
+  finetune:   '/coach/fine-tune',
+  prometheus: '/ai/pharma-intel',
+  merlin:     '/wizard/merlin',
+  houdini:    '/wizard/houdini',
+};
+
+// ── Copy Modal ────────────────────────────────────────────────────────────────
+
+function CopyModal({
+  entry,
+  availableCash,
+  onClose,
+  onSuccess,
+}: {
+  entry: LeaderboardEntry;
+  availableCash: number;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [allocatePct, setAllocatePct] = useState(50);
+  const [executing, setExecuting]     = useState(false);
+
+  const { data: positions, isLoading } = useQuery({
+    queryKey: ['copy-positions', entry.portfolioType, entry.slug, entry.portfolioId],
+    queryFn:  () => fetchPositions(entry),
+  });
+
+  const allocateCash = (allocatePct / 100) * availableCash;
+
+  const handleCopy = useCallback(async () => {
+    if (!positions?.length) return;
+    setExecuting(true);
+    try {
+      const res = await fetch('/api/leaderboard/copy', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ positions, allocateCash }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      toast.success(`Copied ${data.bought} position${data.bought !== 1 ? 's' : ''} from ${entry.name}`);
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || 'Copy failed');
+    } finally {
+      setExecuting(false);
+    }
+  }, [positions, allocateCash, entry.name, onSuccess, onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md glass-card rounded-2xl card-gradient-border overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-white/8">
+          <div>
+            <h3 className="text-sm font-bold text-foreground">Copy {entry.name}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Replicate positions into your portfolio
+            </p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Allocation slider */}
+        <div className="p-4 border-b border-white/8 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Allocate from your cash</span>
+            <span className="font-bold text-foreground">
+              ${allocateCash.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+              <span className="text-muted-foreground font-normal ml-1">({allocatePct}%)</span>
+            </span>
+          </div>
+          <input
+            type="range" min={5} max={100} step={5}
+            value={allocatePct}
+            onChange={e => setAllocatePct(Number(e.target.value))}
+            className="w-full accent-primary"
+          />
+          <div className="flex justify-between text-[10px] text-muted-foreground/60">
+            <span>5%</span><span>50%</span><span>100%</span>
+          </div>
+        </div>
+
+        {/* Positions list */}
+        <div className="max-h-64 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : !positions?.length ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              No open positions to copy
+            </div>
+          ) : (
+            <div className="divide-y divide-white/6">
+              {positions.map(p => (
+                <div key={p.symbol} className="flex items-center justify-between px-4 py-2.5">
+                  <div>
+                    <span className="text-sm font-semibold text-foreground">{p.symbol}</span>
+                    {p.assetName !== p.symbol && (
+                      <span className="text-xs text-muted-foreground ml-2 truncate max-w-32 inline-block">{p.assetName}</span>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-medium text-foreground">{p.allocationPct.toFixed(1)}%</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      ≈${((p.allocationPct / 100) * allocateCash).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-white/8 flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={onClose} className="flex-1">
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="flex-1 btn-shimmer text-white border-0"
+            disabled={!positions?.length || executing || allocateCash < 1}
+            onClick={handleCopy}
+          >
+            {executing
+              ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Executing…</>
+              : <><Copy className="h-3.5 w-3.5 mr-1.5" />Copy {positions?.length || 0} positions</>
+            }
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Leaderboard row ───────────────────────────────────────────────────────────
+
+function LeaderboardRow({
+  entry,
+  onCopy,
+}: {
+  entry: LeaderboardEntry;
+  onCopy: (e: LeaderboardEntry) => void;
+}) {
+  const cat   = CATEGORY_STYLE[entry.category];
+  const isPos = entry.totalReturnPct >= 0;
+  const href  = entry.portfolioType === 'llm'    ? '/llm-portfolios'
+              : entry.portfolioType === 'expert'  ? '/expert-investors'
+              : entry.portfolioType === 'benchmark' ? '/benchmarks'
+              : PORTFOLIO_HREF[entry.slug] || '#';
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 hover:bg-white/3 transition-colors group">
+      {/* Rank */}
+      <div className="w-8 text-center shrink-0">
+        {RANK_MEDAL[entry.rank]
+          ? <span className="text-base">{RANK_MEDAL[entry.rank]}</span>
+          : <span className="text-sm font-bold text-muted-foreground/60">#{entry.rank}</span>
+        }
+      </div>
+
+      {/* Name + category */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold text-foreground truncate">{entry.name}</span>
+          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${cat.bg} ${cat.text} ${cat.border}`}>
+            {entry.categoryLabel}
+          </span>
+        </div>
+        {entry.openPositions !== null && (
+          <div className="text-xs text-muted-foreground mt-0.5">
+            {entry.openPositions} open position{entry.openPositions !== 1 ? 's' : ''}
+          </div>
+        )}
+      </div>
+
+      {/* Return */}
+      <div className="text-right shrink-0">
+        <div className={`text-sm font-bold ${isPos ? 'text-emerald-400' : 'text-rose-400'}`}>
+          {isPos ? '+' : ''}{entry.totalReturnPct.toFixed(2)}%
+        </div>
+        <div className={`text-xs ${isPos ? 'text-emerald-400/70' : 'text-rose-400/70'}`}>
+          {isPos ? '+' : ''}${Math.abs(entry.totalReturnUsd).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          onClick={() => onCopy(entry)}
+          className="text-xs px-2.5 py-1.5 rounded-lg bg-white/6 text-muted-foreground hover:bg-primary/20 hover:text-primary transition-all flex items-center gap-1 border border-white/8"
+          title="Copy positions into your portfolio"
+        >
+          <Copy className="h-3 w-3" />
+          <span className="hidden sm:inline">Copy</span>
+        </button>
+        <Link href={href}>
+          <button className="text-muted-foreground/50 hover:text-foreground transition-colors p-1.5">
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const { profile } = useAuth();
@@ -22,7 +298,16 @@ export default function DashboardPage() {
   const summary = usePortfolioSummary();
   const coachSummary = useCoachSummary();
   const resetPortfolio = useResetPortfolio();
-  const [confirmReset, setConfirmReset] = useState(false);
+  const qc = useQueryClient();
+  const [confirmReset, setConfirmReset]   = useState(false);
+  const [copyTarget, setCopyTarget]       = useState<LeaderboardEntry | null>(null);
+
+  const { data: lbData, isLoading: lbLoading } = useQuery({
+    queryKey: ['leaderboard'],
+    queryFn:  fetchLeaderboard,
+    staleTime: 2 * 60 * 1000,
+  });
+  const leaderboard = lbData?.entries || [];
 
   const handleReset = async () => {
     try {
@@ -353,6 +638,50 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* ── Model Leaderboard ─────────────────────────────────────────────── */}
+      <div className="animate-fade-in-up delay-500">
+        <div className="flex items-center gap-2 mb-1">
+          <Trophy className="h-4 w-4 text-amber-400" />
+          <h2 className="text-base font-bold text-foreground">Model Leaderboard</h2>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          All AI, quant, expert &amp; benchmark portfolios ranked by return.
+          Click <strong>Copy</strong> to replicate any into your portfolio with one click.
+        </p>
+
+        <div className="glass-card rounded-2xl card-gradient-border overflow-hidden">
+          {lbLoading ? (
+            <div className="py-12 flex items-center justify-center gap-2 text-muted-foreground text-sm">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading rankings…
+            </div>
+          ) : leaderboard.length === 0 ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">
+              No portfolios initialized yet.{' '}
+              <Link href="/ai" className="text-primary underline">Start with AI Hub</Link>.
+            </div>
+          ) : (
+            <div className="divide-y divide-white/6">
+              {leaderboard.map(entry => (
+                <LeaderboardRow key={entry.id} entry={entry} onCopy={setCopyTarget} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Copy Modal ────────────────────────────────────────────────────── */}
+      {copyTarget && (
+        <CopyModal
+          entry={copyTarget}
+          availableCash={balance?.available_cash ?? 0}
+          onClose={() => setCopyTarget(null)}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ['balance'] });
+            qc.invalidateQueries({ queryKey: ['portfolio'] });
+          }}
+        />
+      )}
     </div>
   );
 }
