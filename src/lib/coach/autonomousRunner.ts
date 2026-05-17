@@ -1025,8 +1025,8 @@ export async function generateFineTuneReportForUser(supabase: any, userId: strin
 import { PHARMA_PIPELINE } from '@/config/pharma-pipeline';
 
 const PROMETHEUS_INITIAL_BALANCE = 100_000;
-// Max 10% of portfolio per regulatory trade (higher conviction, more concentrated)
-const PROMETHEUS_POSITION_SIZE_PCT = 0.10;
+// 5% of portfolio per regulatory trade
+const PROMETHEUS_POSITION_SIZE_PCT = 0.05;
 // Stop loss: -12% (regulatory plays are volatile; give room for noise)
 const PROMETHEUS_STOP_LOSS_PCT = 0.12;
 // Take profit: +30% (captures approval pop or pre-decision run-up)
@@ -1064,7 +1064,7 @@ export async function runPrometheusForUser(supabase: any, userId: string) {
 
       const price  = quote.price;
       const entry  = Number(trade.entry_price);
-      const sl     = trade.stop_loss  ? Number(trade.stop_loss)  : null;
+      const sl     = trade.stop_loss   ? Number(trade.stop_loss)   : null;
       const tp     = trade.take_profit ? Number(trade.take_profit) : null;
       const side   = trade.side as 'BUY' | 'SELL';
 
@@ -1106,8 +1106,8 @@ export async function runPrometheusForUser(supabase: any, userId: string) {
   const availableCash = Math.max(0, totalValue - capitalInUse);
 
   // ── 3. Scan PHARMA_PIPELINE for actionable regulatory signals ──────────────
-  // Only trade strong_buy (long) and strong_sell (short via SELL position).
-  // Skip any symbol that already has an open position.
+  // Buys on strong_buy, sells (shorts) on strong_sell.
+  // Skips any symbol that already has an open position.
   const openSymbols = new Set(stillOpen.map((t: any) => t.symbol));
   const executed: { symbol: string; side: string; drug: string }[] = [];
   let cash = availableCash;
@@ -1119,16 +1119,16 @@ export async function runPrometheusForUser(supabase: any, userId: string) {
   );
 
   for (const decision of actionableSignals) {
-    if (cash < 100) break; // need at least $100 to open
+    if (cash < 100) break;
 
     const ticker = decision.ticker!;
     try {
       const quote = await getMarketQuote(ticker, 'stock', 'us');
       if (!quote || !quote.price || quote.price <= 0) continue;
 
-      const price   = quote.price;
-      const side    = decision.investmentSignal === 'strong_buy' ? 'BUY' : 'SELL';
-      const sizeUsd = Math.min(cash, totalValue * PROMETHEUS_POSITION_SIZE_PCT);
+      const price      = quote.price;
+      const side       = decision.investmentSignal === 'strong_buy' ? 'BUY' : 'SELL';
+      const sizeUsd    = Math.min(cash, totalValue * PROMETHEUS_POSITION_SIZE_PCT);
       if (sizeUsd < 50) continue;
 
       const quantity   = sizeUsd / price;
