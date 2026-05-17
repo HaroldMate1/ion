@@ -89,7 +89,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push('/');
   };
 
-  const isAIActive = pathname.startsWith('/coach') || pathname.startsWith('/llm-portfolios') || pathname.startsWith('/wizard') || pathname === '/ai';
+  const isAIActive = pathname.startsWith('/coach') || pathname.startsWith('/llm-portfolios') || pathname.startsWith('/wizard') || pathname.startsWith('/ai');
 
   if (loading) {
     return (
