@@ -134,9 +134,36 @@ export async function GET(request: NextRequest) {
     // ── Expert Investor Activity Tracking ──────────────────────────────
     // Runs after coach processing — non-blocking, errors don't fail the cron
     try {
+      // Build ARK baseline from DB: fetch yesterday's wood activity weights so the
+      // ARK fetcher diffs against real previous state instead of static config.
+      let arkPreviousWeights: Map<string, number> | undefined;
+      try {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+        const { data: prevArkRows } = await (supabase
+          .from('expert_investor_activity' as any) as any)
+          .select('symbol, new_pct')
+          .eq('investor_slug', 'wood')
+          .gte('event_date', yesterdayStr)
+          .not('new_pct', 'is', null);
+
+        if (prevArkRows && prevArkRows.length > 0) {
+          arkPreviousWeights = new Map<string, number>();
+          for (const row of prevArkRows) {
+            if (row.symbol && row.new_pct != null) {
+              arkPreviousWeights.set(row.symbol, Number(row.new_pct));
+            }
+          }
+        }
+      } catch {
+        // Non-fatal — fall back to static config baseline
+      }
+
       // Fetch activity from all sources in parallel
       const [arkEvents, pelosiEvents, sec13fEvents] = await Promise.all([
-        fetchARKActivity(),
+        fetchARKActivity(arkPreviousWeights),
         fetchHouseDisclosureActivity(),
         fetchAll13FActivity(),
       ]);

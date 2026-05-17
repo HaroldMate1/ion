@@ -1,6 +1,19 @@
 /**
  * ARK Invest Holdings Fetcher
- * Fetches daily ARKK CSV and detects changes vs stored config
+ *
+ * Fetches the daily ARKK (ARK Innovation ETF) CSV and diffs it against the
+ * previously stored state in the database. Falls back to the static config
+ * top-10 when no DB state exists yet (first run).
+ *
+ * URL fallback chain: ARK has changed their CSV URL several times; we try
+ * three known patterns before giving up.
+ *
+ * BASELINE NOTE:
+ *   On the very first cron run, the diff is against the static config top-10.
+ *   This means all ARKK positions outside the top-10 get flagged as "new_position".
+ *   The upsert's `ignoreDuplicates: true` ensures these are only inserted once.
+ *   From the second run onward, the DB contains the previous day's state, so
+ *   only genuine daily changes are detected.
  */
 
 import axios from 'axios';
@@ -20,9 +33,14 @@ export interface ActivityEvent {
   rawData: object;
 }
 
-const ARK_CSV_URL = 'https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_INNOVATION_ETF_ARKK_HOLDINGS.csv';
+// Known ARK ARKK CSV URL patterns (newest first)
+const ARK_CSV_URLS = [
+  'https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_INNOVATION_ETF_ARKK_HOLDINGS.csv',
+  'https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_INNOVATION_ETF_ARKK_HOLDINGS.csv.gz',
+  'https://arkfunds.io/api/v2/etf/holdings?symbol=ARKK', // JSON fallback via arkfunds.io
+];
 
-// Minimum weight change to report (percentage points)
+// Minimum weight change (in percentage points) to report
 const MIN_CHANGE_THRESHOLD = 0.5;
 
 interface ArkHolding {
@@ -34,31 +52,42 @@ interface ArkHolding {
   weight: number; // percent
 }
 
+// ── CSV parser ────────────────────────────────────────────────────────────────
+
 function parseArkCsv(csv: string): ArkHolding[] {
   const lines = csv.split('\n').map(l => l.trim()).filter(Boolean);
   if (lines.length < 2) return [];
 
-  // Skip header row
   const holdings: ArkHolding[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    // Handle quoted fields — simple split by comma, stripping quotes
-    const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
-    if (cols.length < 8) continue;
+  // Detect header row — find which line has "ticker" or "weight"
+  let startIdx = 1;
+  if (lines[0].toLowerCase().includes('ticker') || lines[0].toLowerCase().includes('weight')) {
+    startIdx = 1;
+  }
 
-    const ticker = cols[3]; // ticker column
-    if (!ticker || ticker === '-' || ticker === '') continue;
+  for (let i = startIdx; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g, '').trim());
+    if (cols.length < 6) continue;
 
-    const weight = parseFloat(cols[7]?.replace('%', '') || '0');
-    const shares = parseFloat(cols[5]?.replace(/,/g, '') || '0');
+    // ARK CSV format: date, fund, company, ticker, cusip, shares, marketValue, weight
+    const ticker = cols[3];
+    if (!ticker || ticker === '-' || ticker === '' || ticker.toLowerCase() === 'ticker') continue;
+
+    const weight     = parseFloat(cols[7]?.replace('%', '') || cols[5]?.replace('%', '') || '0');
+    const shares     = parseFloat(cols[5]?.replace(/,/g, '') || '0');
     const marketValue = parseFloat(cols[6]?.replace(/[$,]/g, '') || '0');
 
-    if (isNaN(weight)) continue;
+    if (isNaN(weight) || weight === 0) continue;
+
+    // Normalize date from "MM/DD/YYYY" or "YYYY-MM-DD"
+    let date = cols[0] || new Date().toISOString().split('T')[0];
+    const mdyMatch = date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (mdyMatch) date = `${mdyMatch[3]}-${mdyMatch[1].padStart(2, '0')}-${mdyMatch[2].padStart(2, '0')}`;
 
     holdings.push({
-      date: cols[0] || new Date().toISOString().split('T')[0],
+      date,
       company: cols[2] || ticker,
-      ticker: ticker.toUpperCase(),
+      ticker: ticker.toUpperCase().replace(/[^A-Z.]/g, ''),
       shares,
       marketValue,
       weight,
@@ -68,101 +97,149 @@ function parseArkCsv(csv: string): ArkHolding[] {
   return holdings;
 }
 
-export async function fetchARKActivity(): Promise<ActivityEvent[]> {
-  try {
-    const response = await axios.get(ARK_CSV_URL, {
-      timeout: 15000,
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; investment-tracker/1.0)' },
-      responseType: 'text',
-    });
+/** Parse arkfunds.io JSON fallback response */
+function parseArkFundsJson(data: any): ArkHolding[] {
+  const holdings = data?.holdings || data?.data?.holdings || [];
+  const today = new Date().toISOString().split('T')[0];
 
-    const csv: string = response.data;
-    const liveHoldings = parseArkCsv(csv);
+  return holdings
+    .filter((h: any) => h.ticker && h.weight)
+    .map((h: any) => ({
+      date: h.date || today,
+      company: h.company || h.ticker,
+      ticker: (h.ticker || '').toUpperCase(),
+      shares: Number(h.shares) || 0,
+      marketValue: Number(h.market_value) || 0,
+      weight: Number(h.weight) || 0,
+    }));
+}
 
-    if (liveHoldings.length === 0) {
-      console.log('[ARK Fetcher] No holdings parsed from CSV');
-      return [];
+// ── CSV fetcher with URL fallback chain ───────────────────────────────────────
+
+async function fetchArkHoldings(): Promise<ArkHolding[]> {
+  for (const url of ARK_CSV_URLS) {
+    try {
+      const resp = await axios.get(url, {
+        timeout: 15000,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; investment-tracker/1.0)' },
+        responseType: 'text',
+      });
+
+      const body: string = resp.data;
+
+      // If it looks like JSON (arkfunds.io fallback), parse accordingly
+      if (url.includes('arkfunds.io') || body.trim().startsWith('{')) {
+        try {
+          const parsed = parseArkFundsJson(JSON.parse(body));
+          if (parsed.length > 0) {
+            console.log(`[ARK Fetcher] Got ${parsed.length} holdings from ${url} (JSON)`);
+            return parsed;
+          }
+        } catch { /* not JSON, try CSV */ }
+      }
+
+      const holdings = parseArkCsv(body);
+      if (holdings.length > 0) {
+        console.log(`[ARK Fetcher] Got ${holdings.length} holdings from ${url}`);
+        return holdings;
+      }
+    } catch (err: any) {
+      console.warn(`[ARK Fetcher] URL failed (${url}):`, err.message);
     }
+  }
+  return [];
+}
 
-    const today = liveHoldings[0]?.date || new Date().toISOString().split('T')[0];
-    const configHoldings = EXPERT_INVESTORS.wood.holdings;
+// ── Main export ───────────────────────────────────────────────────────────────
 
-    // Build map of config holdings: symbol → allocationPct
-    const configMap = new Map<string, number>();
-    for (const h of configHoldings) {
-      configMap.set(h.symbol.toUpperCase(), h.allocationPct);
+export async function fetchARKActivity(
+  previousWeights?: Map<string, number>,
+): Promise<ActivityEvent[]> {
+  const liveHoldings = await fetchArkHoldings();
+
+  if (liveHoldings.length === 0) {
+    console.log('[ARK Fetcher] No holdings parsed from any URL');
+    return [];
+  }
+
+  const today = liveHoldings[0]?.date || new Date().toISOString().split('T')[0];
+
+  // Build baseline: use previousWeights from DB if provided, else static config top-10
+  const baselineMap = new Map<string, number>();
+  if (previousWeights && previousWeights.size > 0) {
+    for (const [sym, w] of previousWeights) baselineMap.set(sym, w);
+  } else {
+    // First run — use config as rough baseline
+    for (const h of EXPERT_INVESTORS.wood.holdings) {
+      baselineMap.set(h.symbol.toUpperCase(), h.allocationPct);
     }
+  }
 
-    // Build map of live holdings: symbol → weight
-    const liveMap = new Map<string, ArkHolding>();
-    for (const h of liveHoldings) {
-      liveMap.set(h.ticker, h);
-    }
+  // Build live map
+  const liveMap = new Map<string, ArkHolding>();
+  for (const h of liveHoldings) {
+    liveMap.set(h.ticker, h);
+  }
 
-    const events: ActivityEvent[] = [];
+  const events: ActivityEvent[] = [];
 
-    // Detect new positions & weight increases
-    for (const [symbol, live] of liveMap) {
-      const prevPct = configMap.get(symbol) ?? null;
+  // Detect new positions & weight changes
+  for (const [symbol, live] of liveMap) {
+    const prevPct = baselineMap.get(symbol) ?? null;
 
-      if (prevPct === null) {
-        // New position
+    if (prevPct === null) {
+      events.push({
+        investorSlug: 'wood',
+        eventDate: today,
+        symbol,
+        assetName: live.company,
+        action: 'new_position',
+        amountRange: live.marketValue > 0 ? `$${(live.marketValue / 1e6).toFixed(1)}M` : null,
+        sharesChange: live.shares || null,
+        previousPct: null,
+        newPct: live.weight,
+        source: 'ark_csv',
+        rawData: live,
+      });
+    } else {
+      const diff = live.weight - prevPct;
+      if (Math.abs(diff) >= MIN_CHANGE_THRESHOLD) {
         events.push({
           investorSlug: 'wood',
           eventDate: today,
           symbol,
           assetName: live.company,
-          action: 'new_position',
-          amountRange: `$${(live.marketValue / 1e6).toFixed(1)}M`,
-          sharesChange: live.shares,
-          previousPct: null,
+          action: diff > 0 ? 'increase' : 'decrease',
+          amountRange: null,
+          sharesChange: null,
+          previousPct: prevPct,
           newPct: live.weight,
           source: 'ark_csv',
           rawData: live,
         });
-      } else {
-        const diff = live.weight - prevPct;
-        if (Math.abs(diff) >= MIN_CHANGE_THRESHOLD) {
-          events.push({
-            investorSlug: 'wood',
-            eventDate: today,
-            symbol,
-            assetName: live.company,
-            action: diff > 0 ? 'increase' : 'decrease',
-            amountRange: null,
-            sharesChange: null,
-            previousPct: prevPct,
-            newPct: live.weight,
-            source: 'ark_csv',
-            rawData: live,
-          });
-        }
       }
     }
-
-    // Detect closed positions
-    for (const [symbol, prevPct] of configMap) {
-      if (!liveMap.has(symbol)) {
-        events.push({
-          investorSlug: 'wood',
-          eventDate: today,
-          symbol,
-          assetName: symbol,
-          action: 'closed_position',
-          amountRange: null,
-          sharesChange: null,
-          previousPct: prevPct,
-          newPct: null,
-          source: 'ark_csv',
-          rawData: { ticker: symbol, closedFrom: prevPct },
-        });
-      }
-    }
-
-    console.log(`[ARK Fetcher] Detected ${events.length} events for ${today}`);
-    return events;
-  } catch (err: any) {
-    console.error('[ARK Fetcher] Error:', err.message);
-    return [];
   }
+
+  // Detect closed positions
+  for (const [symbol, prevPct] of baselineMap) {
+    if (!liveMap.has(symbol)) {
+      events.push({
+        investorSlug: 'wood',
+        eventDate: today,
+        symbol,
+        assetName: symbol,
+        action: 'closed_position',
+        amountRange: null,
+        sharesChange: null,
+        previousPct: prevPct,
+        newPct: null,
+        source: 'ark_csv',
+        rawData: { ticker: symbol, closedFrom: prevPct },
+      });
+    }
+  }
+
+  console.log(`[ARK Fetcher] Detected ${events.length} events for ${today}`);
+  return events;
 }
