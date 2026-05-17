@@ -113,6 +113,27 @@ export function useFineTuneReports({ limit = 30 }: { limit?: number } = {}) {
   });
 }
 
+export function useToggleFineTuneKillSwitch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (active: boolean) => {
+      const res = await fetch('/api/fine-tune/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ killSwitch: active }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to toggle kill switch');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fine-tune-config'] });
+    },
+  });
+}
+
 export function useGenerateFineTuneReport() {
   const qc = useQueryClient();
   return useMutation({

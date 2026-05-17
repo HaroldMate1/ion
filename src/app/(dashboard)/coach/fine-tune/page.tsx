@@ -17,6 +17,7 @@ import {
   useApplyFineTuneWeights,
   useRunFineTuneAnalysis,
   useResetFineTune,
+  useToggleFineTuneKillSwitch,
 } from '@/hooks/use-fine-tune-portfolio';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,10 @@ import {
   Play,
   DollarSign,
   Percent,
+  Power,
+  Briefcase,
+  Settings,
+  Brain,
 } from 'lucide-react';
 
 // ── Pharma / Biotech universe (55 companies — US + International ADRs) ────────
@@ -160,8 +165,19 @@ export default function FineTunePage() {
   const applyWeights                  = useApplyFineTuneWeights();
   const runAnalysis                   = useRunFineTuneAnalysis();
   const resetFineTune                 = useResetFineTune();
+  const toggleKillSwitch              = useToggleFineTuneKillSwitch();
   const trades: any[]                 = tradesData?.trades || [];
   const [confirmReset, setConfirmReset] = useState(false);
+
+  const killSwitchActive = config?.killSwitch ?? false;
+  const openTrades = trades.filter((t: any) => t.status === 'open');
+
+  const handleToggleKillSwitch = () => {
+    toggleKillSwitch.mutate(!killSwitchActive, {
+      onSuccess: () => toast.success(killSwitchActive ? 'Kill switch deactivated' : 'Kill switch activated'),
+      onError: (err: any) => toast.error(err.message || 'Failed to toggle kill switch'),
+    });
+  };
 
   const handleRunOptimization = async () => {
     setIsRunning(true);
@@ -226,35 +242,70 @@ export default function FineTunePage() {
   return (
     <div className="container mx-auto py-4 sm:py-6 space-y-4 sm:space-y-6 px-2 sm:px-0">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/ai">
-          <Button variant="ghost" size="icon" className="shrink-0">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <FlaskConical className="h-6 w-6 text-purple-500 shrink-0" />
-            <h1 className="text-xl sm:text-3xl font-bold">Fine-Tuned Model</h1>
-            <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30" variant="outline">
-              Experimental
-            </Badge>
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <Link href="/ai">
+            <Button variant="ghost" size="icon" className="shrink-0">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <FlaskConical className="h-6 w-6 text-purple-500 shrink-0" />
+              <h1 className="text-xl sm:text-3xl font-bold">Fine-Tuned Model</h1>
+              <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30" variant="outline">
+                Experimental
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Pharma-specialized: backtests all {PRESET_SYMBOLS.length} pharma & biotech stocks, then runs an independent $100k portfolio — separate from the Coach
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Pharma-specialized: backtests all {PRESET_SYMBOLS.length} pharma & biotech stocks, then runs an independent $100k portfolio — separate from the Coach
-          </p>
+        </div>
+
+        {/* Navigation buttons — mirrors the Coach page */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <Link href="/coach/fine-tune/settings">
+            <Button variant="outline" size="sm" className="w-full text-xs">
+              <Settings className="h-4 w-4 mr-1.5 shrink-0" />
+              Settings
+            </Button>
+          </Link>
+          <Link href="/coach/fine-tune/reports">
+            <Button variant="outline" size="sm" className="w-full text-xs">
+              <FileText className="h-4 w-4 mr-1.5 shrink-0" />
+              Reports
+            </Button>
+          </Link>
+          <Link href="/coach/fine-tune/trades">
+            <Button variant="outline" size="sm" className="w-full text-xs">
+              <Briefcase className="h-4 w-4 mr-1.5 shrink-0" />
+              Trades
+            </Button>
+          </Link>
+          <Link href="/coach">
+            <Button variant="outline" size="sm" className="w-full text-xs">
+              <Brain className="h-4 w-4 mr-1.5 shrink-0" />
+              Coach
+            </Button>
+          </Link>
         </div>
       </div>
 
-      {/* Navigation */}
-      <div className="flex gap-2">
-        <Link href="/coach/fine-tune/reports">
-          <Button variant="outline" size="sm" className="text-xs border-purple-500/30 hover:bg-purple-500/10">
-            <FileText className="h-4 w-4 mr-1.5 shrink-0 text-purple-500" />
-            <span className="text-purple-400">Reports</span>
+      {/* Kill Switch Alert */}
+      {killSwitchActive && (
+        <div className="bg-destructive/10 border border-destructive rounded-lg p-4 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+          <div className="flex-1">
+            <p className="font-medium text-destructive">Kill Switch Active</p>
+            <p className="text-sm text-muted-foreground">All Fine-Tune trading is paused.</p>
+          </div>
+          <Button variant="destructive" size="sm" onClick={handleToggleKillSwitch} disabled={toggleKillSwitch.isPending}>
+            <Power className="h-4 w-4 mr-2" />
+            Deactivate
           </Button>
-        </Link>
-      </div>
+        </div>
+      )}
 
       {/* ── Fine-Tune Portfolio Dashboard ────────────────────────────────── */}
       <Card className="border-purple-500/30">
@@ -332,73 +383,100 @@ export default function FineTunePage() {
                 </p>
               )}
 
-              {/* Run Analysis button */}
-              <Button
-                onClick={handleRunAnalysis}
-                disabled={runAnalysis.isPending || !config?.isActive}
-                className="w-full bg-purple-600 hover:bg-purple-700"
-              >
-                {runAnalysis.isPending ? (
-                  <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Running Analysis…</>
-                ) : (
-                  <><Play className="h-4 w-4 mr-2" />Run Live Analysis</>
-                )}
-              </Button>
-
-              {/* Restart */}
-              <div className="flex justify-end pt-1">
-                {confirmReset ? (
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">Reset all trades and start fresh?</span>
-                    <Button size="sm" variant="destructive" onClick={handleResetFineTune} disabled={resetFineTune.isPending}>
-                      {resetFineTune.isPending ? <RefreshCw className="h-3 w-3 animate-spin" /> : 'Yes, reset'}
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setConfirmReset(false)}>Cancel</Button>
-                  </div>
-                ) : (
-                  <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setConfirmReset(true)}>
-                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Restart Portfolio
+              {/* Actions */}
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                <Button
+                  onClick={handleRunAnalysis}
+                  disabled={runAnalysis.isPending || !config?.isActive || killSwitchActive}
+                  className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700"
+                >
+                  {runAnalysis.isPending ? (
+                    <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Running…</>
+                  ) : (
+                    <><Play className="h-4 w-4 mr-2" />Run Live Analysis</>
+                  )}
+                </Button>
+                {!killSwitchActive && (
+                  <Button variant="outline" onClick={handleToggleKillSwitch} disabled={toggleKillSwitch.isPending}>
+                    <Power className="h-4 w-4 mr-2" />
+                    Activate Kill Switch
                   </Button>
                 )}
+                <div className="sm:ml-auto">
+                  {confirmReset ? (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">Reset all trades?</span>
+                      <Button size="sm" variant="destructive" onClick={handleResetFineTune} disabled={resetFineTune.isPending}>
+                        {resetFineTune.isPending ? <RefreshCw className="h-3 w-3 animate-spin" /> : 'Yes, reset'}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setConfirmReset(false)}>Cancel</Button>
+                    </div>
+                  ) : (
+                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setConfirmReset(true)}>
+                      <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Restart Portfolio
+                    </Button>
+                  )}
+                </div>
               </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
-              {/* Recent trades */}
-              {trades.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Recent Trades ({balance?.totalTrades ?? 0} total)</p>
-                  <div className="space-y-1.5">
-                    {trades.slice(0, 6).map((t: any) => (
-                      <div
-                        key={t.id}
-                        className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 border text-sm"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Badge
-                            variant={t.side === 'BUY' ? 'default' : 'destructive'}
-                            className="text-[10px] shrink-0"
-                          >
-                            {t.side}
+      {/* ── Current Positions ────────────────────────────────────────────── */}
+      <Card className="border-purple-500/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wallet className="h-5 w-5 text-purple-500" />
+            Current Positions
+          </CardTitle>
+          <CardDescription>Open trades managed automatically by the Fine-Tune portfolio</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {openTrades.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Wallet className="h-10 w-10 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No open positions. Run analysis to generate signals.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm font-medium text-muted-foreground border-b pb-2">
+                <span>{openTrades.length} Position{openTrades.length !== 1 ? 's' : ''}</span>
+                <span>
+                  Total Invested: ${openTrades.reduce((s: number, t: any) => s + Number(t.size_usd || 0), 0)
+                    .toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </span>
+              </div>
+              {openTrades.map((trade: any) => {
+                const pnl    = Number(trade.pnl_usd  || 0);
+                const pnlPct = Number(trade.pnl_pct  || 0);
+                return (
+                  <div key={trade.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{trade.symbol}</span>
+                          <Badge className={`text-[10px] ${trade.side === 'BUY' ? 'bg-green-500/15 text-green-600 border-green-500/30' : 'bg-red-500/15 text-red-600 border-red-500/30'}`} variant="outline">
+                            {trade.side}
                           </Badge>
-                          <span className="font-semibold">{t.symbol}</span>
-                          <span className="text-xs text-muted-foreground hidden sm:inline">
-                            ${Number(t.size_usd).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          </span>
                         </div>
-                        <div className="shrink-0 text-right">
-                          {t.status === 'open' ? (
-                            <Badge variant="outline" className="text-blue-500 text-[10px]">Open</Badge>
-                          ) : (
-                            <span className={`font-medium text-sm ${Number(t.pnl_usd) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                              {Number(t.pnl_usd) >= 0 ? '+' : ''}${Number(t.pnl_usd || 0).toFixed(2)}
-                            </span>
-                          )}
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {Number(trade.quantity).toFixed(4)} units @ ${Number(trade.entry_price).toFixed(2)}
                         </div>
                       </div>
-                    ))}
+                    </div>
+                    <div className="text-right">
+                      <div className="font-medium">
+                        ${Number(trade.size_usd).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </div>
+                      <div className={`text-xs font-medium ${pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%)
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
-            </>
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>

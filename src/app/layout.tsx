@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Investment Demo - Practice Trading with Virtual Money",
-  description: "Trade stocks, cryptocurrency, and ETFs with $100,000 virtual cash. Track your portfolio and practice trading risk-free.",
+  title: "ION — Investment Optimized Network",
+  description: "Unify your budgets, stocks, and crypto into one intelligent ecosystem. Let advanced AI optimize your wealth in real-time.",
 };
 
 export default function RootLayout({

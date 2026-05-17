@@ -9,7 +9,10 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
-  const origin = requestUrl.origin;
+  // On Vercel, x-forwarded-host has the real public host (e.g. ion-app.vercel.app)
+  // request.url may have an internal origin — always prefer the forwarded host
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const origin = forwardedHost ? `https://${forwardedHost}` : requestUrl.origin;
 
   if (code) {
     // Create response that we'll modify with cookies

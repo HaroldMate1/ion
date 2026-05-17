@@ -1,7 +1,14 @@
 /**
- * House Financial Disclosures Fetcher (Pelosi)
- * Fetches periodic transaction reports (PTRs) from House eFD system
- * No API key required — public government data
+ * House Financial Disclosures Fetcher (Congressional Traders)
+ *
+ * Primary source: House Stock Watcher public API (housestockwatcher.com)
+ *   — Aggregates all House member PTR filings, no key required.
+ *
+ * Fallback: House eFD direct search (disclosures.house.gov)
+ *   — Fetches Pelosi's PTR XML directly from the House eFD system.
+ *
+ * Both sources cover Periodic Transaction Reports (PTRs) — the 30/45-day
+ * disclosures Congress members must file for personal trades.
  */
 
 import axios from 'axios';
@@ -16,124 +23,65 @@ export interface ActivityEvent {
   sharesChange: number | null;
   previousPct: number | null;
   newPct: number | null;
-  source: 'ark_csv' | 'house_disclosure';
+  source: 'ark_csv' | 'house_disclosure' | 'sec_13f';
   rawData: object;
 }
 
-// Pelosi's Member ID in the House eFD system
-const PELOSI_MEMBER_ID = 'P000197';
-const HOUSE_EFD_BASE = 'https://disclosures.house.gov';
+// ── House Stock Watcher API ───────────────────────────────────────────────────
+const HOUSE_STOCK_WATCHER_URL = 'https://housestockwatcher.com/api';
 
-interface FilingMeta {
+// ── Fallback: House eFD ───────────────────────────────────────────────────────
+const HOUSE_EFD_BASE = 'https://disclosures.house.gov';
+// Member ID for Nancy Pelosi in the House eFD system
+const PELOSI_MEMBER_ID = 'P000197';
+// Correct DocType for Periodic Transaction Reports
+const PTR_DOC_TYPE = 'P';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface HouseStockWatcherTx {
+  transaction_date: string;
+  ticker: string;
+  representative: string;
+  transaction_type: string;
+  amount: string;
+  asset_description: string;
+  disclosure_date: string;
+  disclosure_year: number;
+  district: string;
+  state: string;
+  party: string;
+  name?: string;
+  comment?: string;
+}
+
+interface EFDFilingMeta {
   DocID: string;
-  FilingDate: string; // e.g. "01/15/2026"
+  FilingDate: string;
   FilingType: string;
 }
 
-interface ParsedTransaction {
+interface ParsedEFDTransaction {
   assetName: string;
   symbol: string;
-  transactionType: string; // "Purchase", "Sale (Full)", "Sale (Partial)", "Exchange"
+  transactionType: string;
   transactionDate: string;
-  amount: string; // "$15,001 - $50,000"
+  amount: string;
 }
 
-/**
- * Fetch list of PTR filings for Pelosi from the House eFD API
- */
-async function fetchFilingList(year: number): Promise<FilingMeta[]> {
-  const url = `${HOUSE_EFD_BASE}/House/Search/ByMember?MemberId=${PELOSI_MEMBER_ID}&FilingYear=${year}&DocType=PTRVL`;
-  const response = await axios.get(url, {
-    timeout: 10000,
-    headers: {
-      'Accept': 'application/json, text/html, */*',
-      'User-Agent': 'Mozilla/5.0 (compatible; investment-tracker/1.0)',
-    },
-  });
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-  // Response is JSON array or wrapped in an object
-  const data = response.data;
-  if (Array.isArray(data)) return data;
-  if (data?.results && Array.isArray(data.results)) return data.results;
-  if (data?.FilingSearchResult && Array.isArray(data.FilingSearchResult)) {
-    return data.FilingSearchResult;
-  }
-  return [];
-}
-
-/**
- * Parse XML text to extract transactions using regex
- * Handles the House eFD XML format without a library
- */
-function extractXmlTag(xml: string, tag: string): string {
-  const match = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
-  return match ? match[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim() : '';
-}
-
-function extractAllXmlBlocks(xml: string, tag: string): string[] {
-  const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'gi');
-  const blocks: string[] = [];
-  let match;
-  while ((match = regex.exec(xml)) !== null) {
-    blocks.push(match[1]);
-  }
-  return blocks;
-}
-
-function parseTransactions(xml: string): ParsedTransaction[] {
-  // Try to find transaction blocks — PTR XML uses <Transaction> or <New> elements
-  const txBlocks = extractAllXmlBlocks(xml, 'Transaction');
-  if (txBlocks.length === 0) {
-    // Some PTR formats use different tag names
-    const newBlocks = extractAllXmlBlocks(xml, 'New');
-    if (newBlocks.length > 0) {
-      return newBlocks.map(block => parseTxBlock(block));
-    }
-    return [];
-  }
-  return txBlocks.map(block => parseTxBlock(block));
-}
-
-function parseTxBlock(block: string): ParsedTransaction {
-  const assetName = extractXmlTag(block, 'AssetName') || extractXmlTag(block, 'Asset');
-  const symbol = extractXmlTag(block, 'Ticker') ||
-    extractXmlTag(block, 'Symbol') ||
-    extractTickerFromName(assetName);
-  const transactionType = extractXmlTag(block, 'TransactionType') ||
-    extractXmlTag(block, 'Type') || '';
-  const transactionDate = extractXmlTag(block, 'TransactionDate') ||
-    extractXmlTag(block, 'Date') || '';
-  const amount = extractXmlTag(block, 'Amount') || '';
-
-  return { assetName, symbol, transactionType, transactionDate, amount };
-}
-
-/**
- * Try to extract a ticker from asset name like "Microsoft Corp (MSFT) Call"
- */
-function extractTickerFromName(name: string): string {
-  const match = name.match(/\(([A-Z]{1,5})\)/);
-  return match ? match[1] : name.split(/\s+/)[0].toUpperCase().replace(/[^A-Z]/g, '');
-}
-
-/**
- * Normalize transaction date from various formats to YYYY-MM-DD
- */
 function normalizeDate(raw: string): string {
   if (!raw) return new Date().toISOString().split('T')[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
   // MM/DD/YYYY
   const mdy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (mdy) return `${mdy[3]}-${mdy[1].padStart(2, '0')}-${mdy[2].padStart(2, '0')}`;
-  // Already YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
   return raw.slice(0, 10);
 }
 
-/**
- * Map House disclosure transaction type to our action type
- */
-function mapAction(txType: string): ActivityEvent['action'] {
-  const t = txType.toLowerCase();
+function mapTransactionType(type: string): ActivityEvent['action'] {
+  const t = (type || '').toLowerCase();
   if (t.includes('purchase') || t.includes('buy')) return 'buy';
   if (t.includes('sale (partial)')) return 'decrease';
   if (t.includes('sale') || t.includes('sell')) return 'sell';
@@ -141,109 +89,245 @@ function mapAction(txType: string): ActivityEvent['action'] {
   return 'buy';
 }
 
-/**
- * Fetch and parse a single PTR XML document
- */
-async function fetchAndParseXml(year: number, docId: string): Promise<ParsedTransaction[]> {
-  // Try the XML document URL
-  const xmlUrl = `${HOUSE_EFD_BASE}/HouseDisclosures/MBXml/FD/${year}/${docId}.xml`;
+function extractTickerFromName(name: string): string {
+  const match = name.match(/\(([A-Z]{1,5})\)/);
+  return match ? match[1] : name.split(/\s+/)[0].toUpperCase().replace(/[^A-Z]/g, '');
+}
+
+// ── Primary: House Stock Watcher ──────────────────────────────────────────────
+
+async function fetchViaHouseStockWatcher(
+  cutoff: string,
+): Promise<ActivityEvent[] | null> {
   try {
-    const response = await axios.get(xmlUrl, {
-      timeout: 10000,
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; investment-tracker/1.0)' },
-      responseType: 'text',
+    const response = await axios.get(HOUSE_STOCK_WATCHER_URL, {
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; investment-tracker/1.0)',
+        Accept: 'application/json',
+      },
     });
-    return parseTransactions(response.data as string);
-  } catch {
-    // Some filings are only available as HTML — try alternate URL pattern
-    try {
-      const htmlUrl = `${HOUSE_EFD_BASE}/HouseDisclosures/MBXml/FD/${year}FD/${docId}.xml`;
-      const r2 = await axios.get(htmlUrl, { timeout: 10000, responseType: 'text' });
-      return parseTransactions(r2.data as string);
-    } catch {
-      return [];
+
+    const raw = response.data;
+    const transactions: HouseStockWatcherTx[] = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.data)
+        ? raw.data
+        : [];
+
+    if (transactions.length === 0) return null;
+
+    // Filter for Pelosi
+    const pelosiTxns = transactions.filter(tx => {
+      const rep = (tx.representative || tx.name || '').toLowerCase();
+      return rep.includes('pelosi');
+    });
+
+    const events: ActivityEvent[] = [];
+    for (const tx of pelosiTxns) {
+      const eventDate = normalizeDate(tx.transaction_date || tx.disclosure_date);
+      if (eventDate < cutoff) continue;
+
+      const rawTicker = (tx.ticker || '').toUpperCase().replace(/[^A-Z.]/g, '');
+      if (!rawTicker || rawTicker === '-' || rawTicker.length > 6) continue;
+
+      events.push({
+        investorSlug: 'pelosi',
+        eventDate,
+        symbol: rawTicker,
+        assetName: tx.asset_description || rawTicker,
+        action: mapTransactionType(tx.transaction_type),
+        amountRange: tx.amount || null,
+        sharesChange: null,
+        previousPct: null,
+        newPct: null,
+        source: 'house_disclosure',
+        rawData: tx as object,
+      });
     }
+
+    console.log(
+      `[House Disclosure] ${events.length} Pelosi transactions via House Stock Watcher`,
+    );
+    return events;
+  } catch (err: any) {
+    console.warn('[House Disclosure] House Stock Watcher failed:', err.message);
+    return null;
   }
 }
 
+// ── Fallback: House eFD XML ───────────────────────────────────────────────────
+
+function extractXmlTag(xml: string, tag: string): string {
+  const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+  return m ? m[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim() : '';
+}
+
+function extractAllXmlBlocks(xml: string, tag: string): string[] {
+  const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'gi');
+  const blocks: string[] = [];
+  let m;
+  while ((m = re.exec(xml)) !== null) blocks.push(m[1]);
+  return blocks;
+}
+
+function parseTxBlock(block: string): ParsedEFDTransaction {
+  const assetName =
+    extractXmlTag(block, 'AssetName') || extractXmlTag(block, 'Asset');
+  const symbol =
+    extractXmlTag(block, 'Ticker') ||
+    extractXmlTag(block, 'Symbol') ||
+    extractTickerFromName(assetName);
+  const transactionType =
+    extractXmlTag(block, 'TransactionType') ||
+    extractXmlTag(block, 'Type') ||
+    '';
+  const transactionDate =
+    extractXmlTag(block, 'TransactionDate') ||
+    extractXmlTag(block, 'Date') ||
+    '';
+  const amount = extractXmlTag(block, 'Amount') || '';
+  return { assetName, symbol, transactionType, transactionDate, amount };
+}
+
+function parseEFDXml(xml: string): ParsedEFDTransaction[] {
+  const txBlocks = extractAllXmlBlocks(xml, 'Transaction');
+  if (txBlocks.length > 0) return txBlocks.map(parseTxBlock);
+  const newBlocks = extractAllXmlBlocks(xml, 'New');
+  return newBlocks.map(parseTxBlock);
+}
+
+async function fetchEFDFilingList(year: number): Promise<EFDFilingMeta[]> {
+  // Try multiple DocType values used by the House eFD system for PTRs
+  const docTypes = [PTR_DOC_TYPE, 'PTR', 'PTRVL'];
+  for (const docType of docTypes) {
+    try {
+      const url = `${HOUSE_EFD_BASE}/House/Search/ByMember?MemberId=${PELOSI_MEMBER_ID}&FilingYear=${year}&DocType=${docType}`;
+      const resp = await axios.get(url, {
+        timeout: 10000,
+        headers: {
+          Accept: 'application/json, text/html, */*',
+          'User-Agent': 'Mozilla/5.0 (compatible; investment-tracker/1.0)',
+        },
+      });
+      const data = resp.data;
+      if (Array.isArray(data) && data.length > 0) return data;
+      if (data?.results?.length) return data.results;
+      if (data?.FilingSearchResult?.length) return data.FilingSearchResult;
+    } catch {
+      // Try next DocType
+    }
+  }
+  return [];
+}
+
+async function fetchEFDXml(year: number, docId: string): Promise<string | null> {
+  // Try multiple URL patterns for PTR XML documents
+  const patterns = [
+    `${HOUSE_EFD_BASE}/public_disc/ptr-pdfs/${year}/${docId}.xml`,
+    `${HOUSE_EFD_BASE}/HouseDisclosures/MBXml/FD/${year}/${docId}.xml`,
+    `${HOUSE_EFD_BASE}/HouseDisclosures/MBXml/FD/${year}FD/${docId}.xml`,
+    `${HOUSE_EFD_BASE}/public_disc/financial-pdfs/${year}/${docId}.xml`,
+  ];
+  for (const url of patterns) {
+    try {
+      const r = await axios.get(url, {
+        timeout: 10000,
+        responseType: 'text',
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; investment-tracker/1.0)' },
+      });
+      const xml: string = r.data;
+      if (xml.includes('<') && xml.length > 100) return xml;
+    } catch {
+      // Try next pattern
+    }
+  }
+  return null;
+}
+
+async function fetchViaHouseEFD(cutoff: string): Promise<ActivityEvent[]> {
+  const currentYear = new Date().getFullYear();
+  const years = [currentYear];
+  if (new Date().getMonth() < 2) years.push(currentYear - 1);
+
+  const allFilings: EFDFilingMeta[] = [];
+  for (const year of years) {
+    const filings = await fetchEFDFilingList(year);
+    allFilings.push(...filings);
+  }
+
+  if (allFilings.length === 0) {
+    console.log('[House Disclosure] No PTR filings found via eFD fallback');
+    return [];
+  }
+
+  const sorted = allFilings
+    .filter(f => f.DocID && f.FilingDate)
+    .sort((a, b) => normalizeDate(b.FilingDate).localeCompare(normalizeDate(a.FilingDate)))
+    .slice(0, 5);
+
+  const events: ActivityEvent[] = [];
+  for (const filing of sorted) {
+    const filingDate = normalizeDate(filing.FilingDate);
+    if (filingDate < cutoff) continue;
+
+    const year = new Date(filingDate).getFullYear();
+    const xml = await fetchEFDXml(year, filing.DocID);
+    if (!xml) continue;
+
+    const txns = parseEFDXml(xml);
+    for (const tx of txns) {
+      const eventDate = normalizeDate(tx.transactionDate) || filingDate;
+      const symbol = tx.symbol || extractTickerFromName(tx.assetName);
+      if (!symbol || symbol.length > 6) continue;
+
+      events.push({
+        investorSlug: 'pelosi',
+        eventDate,
+        symbol: symbol.toUpperCase(),
+        assetName: tx.assetName || symbol,
+        action: mapTransactionType(tx.transactionType),
+        amountRange: tx.amount || null,
+        sharesChange: null,
+        previousPct: null,
+        newPct: null,
+        source: 'house_disclosure',
+        rawData: { ...tx, filingDate, docId: filing.DocID },
+      });
+    }
+  }
+
+  console.log(`[House Disclosure] ${events.length} Pelosi transactions via eFD fallback`);
+  return events;
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
 /**
- * Main export: fetch Pelosi's recent House disclosure trades
- * Only fetches filings from the last 90 days to avoid re-processing old data
+ * Fetch Pelosi's recent congressional stock disclosures.
+ * Uses House Stock Watcher API (primary) → House eFD XML (fallback).
+ * Only returns transactions on or after `lastKnownDate` (default: last 90 days).
  */
 export async function fetchHouseDisclosureActivity(
-  lastKnownDate?: string
+  lastKnownDate?: string,
 ): Promise<ActivityEvent[]> {
-  try {
-    const currentYear = new Date().getFullYear();
-    const years = [currentYear];
-    // Also check previous year in Jan/Feb since PTRs can lag
-    if (new Date().getMonth() < 2) years.push(currentYear - 1);
-
-    const allFilings: FilingMeta[] = [];
-    for (const year of years) {
-      try {
-        const filings = await fetchFilingList(year);
-        allFilings.push(...filings);
-      } catch {
-        // Year may have no filings yet
-      }
-    }
-
-    if (allFilings.length === 0) {
-      console.log('[House Disclosure] No PTR filings found for Pelosi');
-      return [];
-    }
-
-    // Sort by date descending, take 5 most recent
-    const sorted = allFilings
-      .filter(f => f.DocID && f.FilingDate)
-      .sort((a, b) => {
-        const da = normalizeDate(a.FilingDate);
-        const db = normalizeDate(b.FilingDate);
-        return db.localeCompare(da);
-      })
-      .slice(0, 5);
-
-    const cutoff = lastKnownDate || (() => {
+  const cutoff =
+    lastKnownDate ??
+    (() => {
       const d = new Date();
       d.setDate(d.getDate() - 90);
       return d.toISOString().split('T')[0];
     })();
 
-    const events: ActivityEvent[] = [];
+  // Try primary source first
+  const primary = await fetchViaHouseStockWatcher(cutoff);
+  if (primary !== null) return primary;
 
-    for (const filing of sorted) {
-      const filingDate = normalizeDate(filing.FilingDate);
-      if (filingDate < cutoff) continue;
-
-      const year = new Date(filingDate).getFullYear();
-      const transactions = await fetchAndParseXml(year, filing.DocID);
-
-      for (const tx of transactions) {
-        const eventDate = normalizeDate(tx.transactionDate) || filingDate;
-        const symbol = tx.symbol || extractTickerFromName(tx.assetName);
-        if (!symbol || symbol.length > 6) continue;
-
-        events.push({
-          investorSlug: 'pelosi',
-          eventDate,
-          symbol: symbol.toUpperCase(),
-          assetName: tx.assetName || symbol,
-          action: mapAction(tx.transactionType),
-          amountRange: tx.amount || null,
-          sharesChange: null,
-          previousPct: null,
-          newPct: null,
-          source: 'house_disclosure',
-          rawData: { ...tx, filingDate, docId: filing.DocID },
-        });
-      }
-    }
-
-    console.log(`[House Disclosure] Detected ${events.length} Pelosi transactions`);
-    return events;
+  // Fallback to House eFD direct API
+  try {
+    return await fetchViaHouseEFD(cutoff);
   } catch (err: any) {
-    console.error('[House Disclosure] Error:', err.message);
+    console.error('[House Disclosure] All sources failed:', err.message);
     return [];
   }
 }

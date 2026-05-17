@@ -374,6 +374,14 @@ export async function autoCloseTradesForUser(supabase: any, userId: string) {
       if (shouldClose) {
         const { pnl, pnlPercent } = calculatePnL(entryPrice, currentPrice, quantity, side);
 
+        // Study the loss and adapt weights before saving notes
+        let adaptNote = '';
+        if (pnl < 0) {
+          adaptNote = await studyLossAndAdaptWeights(supabase, userId, {
+            ...trade, pnl_pct: pnlPercent, signal_id: trade.signal_id,
+          }, 'coach');
+        }
+
         await (supabase.from('coach_paper_trade') as any)
           .update({
             status: 'closed',
@@ -381,7 +389,7 @@ export async function autoCloseTradesForUser(supabase: any, userId: string) {
             pnl_usd: pnl,
             pnl_pct: pnlPercent,
             closed_at: new Date().toISOString(),
-            notes: `${trade.notes || ''} | Auto-closed: ${closeReason}`,
+            notes: [trade.notes, `Auto-closed: ${closeReason}`, adaptNote].filter(Boolean).join(' | '),
           })
           .eq('id', trade.id);
 
@@ -627,6 +635,98 @@ function buildTakeProfitExplanation(
   return parts.join(' ');
 }
 
+// ─── Loss study & adaptive weight adjustment ──────────────────────────────────
+
+/**
+ * When a trade closes at a loss, study which agents contributed to the wrong call
+ * and nudge their weights down slightly. Called automatically on every losing close.
+ *
+ * For coach trades that have a linked signal_id, we look at agent_votes_json to
+ * target the specific agents that voted in the losing direction.
+ * For fine-tune trades (no signal record), we apply a generic reduction to the
+ * highest-weighted agent.
+ *
+ * Bounds: each weight stays in [0.05, 0.85]; all three always sum to 1.
+ * Max single-loss adjustment: 3% per weight.
+ */
+export async function studyLossAndAdaptWeights(
+  supabase: any,
+  userId: string,
+  trade: any,
+  portfolioType: 'coach' | 'fine_tune',
+): Promise<string> {
+  const table   = portfolioType === 'coach' ? 'coach_config' : 'fine_tune_config';
+  const wInd    = portfolioType === 'coach' ? 'weight_indicator'    : 'indicator_weight';
+  const wPA     = portfolioType === 'coach' ? 'weight_price_action' : 'price_action_weight';
+  const wNews   = portfolioType === 'coach' ? 'weight_news'         : 'news_weight';
+
+  const { data: cfg } = await (supabase.from(table) as any)
+    .select(`${wInd}, ${wPA}, ${wNews}`)
+    .eq('user_id', userId)
+    .single();
+
+  if (!cfg) return '';
+
+  let ind = Number(cfg[wInd]);
+  let pa  = Number(cfg[wPA]);
+  let nw  = Number(cfg[wNews]);
+
+  // Scale adjustment to loss size (max 3%)
+  const lossPct = Math.abs(Number(trade.pnl_pct || 0));
+  const delta   = Math.min((lossPct / 100) * 0.5, 0.03);
+  if (delta < 0.005) return ''; // loss too small to adjust
+
+  // Try to find which agents voted in the losing direction
+  let indicatorWasWrong    = false;
+  let priceActionWasWrong  = false;
+  let newsWasWrong         = false;
+
+  if (portfolioType === 'coach' && trade.signal_id) {
+    const { data: signal } = await (supabase.from('coach_signal') as any)
+      .select('agent_votes_json')
+      .eq('id', trade.signal_id)
+      .maybeSingle();
+
+    if (signal?.agent_votes_json) {
+      const votes = signal.agent_votes_json;
+      const side  = trade.side as string;
+      // Each agent vote may be nested differently — check common structures
+      const indAction  = votes?.indicator?.recommendation  ?? votes?.indicator?.action  ?? votes?.indicators?.recommendation;
+      const paAction   = votes?.priceAction?.recommendation ?? votes?.priceAction?.action ?? votes?.price_action?.recommendation;
+      const newsAction = votes?.news?.recommendation        ?? votes?.news?.action;
+
+      indicatorWasWrong   = indAction  === side;
+      priceActionWasWrong = paAction   === side;
+      newsWasWrong        = newsAction === side;
+    }
+  }
+
+  // If we couldn't determine specific agents, penalise the dominant one
+  const hasTargeted = indicatorWasWrong || priceActionWasWrong || newsWasWrong;
+  if (!hasTargeted) {
+    const maxW = Math.max(ind, pa, nw);
+    if (ind === maxW)      indicatorWasWrong   = true;
+    else if (pa === maxW)  priceActionWasWrong = true;
+    else                   newsWasWrong        = true;
+  }
+
+  if (indicatorWasWrong)   ind = Math.max(0.05, ind - delta);
+  if (priceActionWasWrong) pa  = Math.max(0.05, pa  - delta);
+  if (newsWasWrong)        nw  = Math.max(0.05, nw  - delta);
+
+  // Renormalise so weights always sum to 1
+  const total = ind + pa + nw;
+  ind = Math.round((ind / total) * 100) / 100;
+  pa  = Math.round((pa  / total) * 100) / 100;
+  nw  = Math.max(0.01, Math.round((1 - ind - pa) * 100) / 100);
+
+  await (supabase.from(table) as any)
+    .update({ [wInd]: ind, [wPA]: pa, [wNews]: nw })
+    .eq('user_id', userId);
+
+  return `Loss study (${lossPct.toFixed(1)}% loss): weights → Ind ${(ind * 100).toFixed(0)}% / PA ${(pa * 100).toFixed(0)}% / News ${(nw * 100).toFixed(0)}%`;
+}
+
 // ─── Fine-Tune autonomous runner ──────────────────────────────────────────────
 
 /** The 55-stock pharma/biotech universe used by the Fine-Tune portfolio. */
@@ -695,6 +795,14 @@ export async function runFineTuneForUser(supabase: any, userId: string) {
 
       if (newStatus) {
         const { pnl, pnlPercent } = calculatePnL(entry, price, Number(trade.quantity), side);
+
+        let adaptNote = '';
+        if (pnl < 0) {
+          adaptNote = await studyLossAndAdaptWeights(supabase, userId, {
+            ...trade, pnl_pct: pnlPercent,
+          }, 'fine_tune');
+        }
+
         await (supabase.from('fine_tune_trade') as any)
           .update({
             status: newStatus,
@@ -702,6 +810,7 @@ export async function runFineTuneForUser(supabase: any, userId: string) {
             exit_price: price,
             pnl_usd: pnl,
             pnl_pct: pnlPercent,
+            notes: [trade.notes, adaptNote].filter(Boolean).join(' | '),
           })
           .eq('id', trade.id);
         tradesClosed++;
